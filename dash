@@ -1,0 +1,808 @@
+bash
+
+python3 << 'PYEOF'
+import json
+
+with open('/home/claude/shopping_clean.json', 'r', encoding='utf-8') as f:
+    shopping = json.load(f)
+with open('/home/claude/logistica_clean.json', 'r', encoding='utf-8') as f:
+    logistica = json.load(f)
+
+# Trim empty trailing columns from shopping
+for row in shopping:
+    while len(row) > 13 and row[-1]['v'] is None and row[-1]['rs'] == 1 and row[-1]['cs'] == 1 and not row[-1]['skip']:
+        row.pop()
+
+shopping_json = json.dumps(shopping, ensure_ascii=False, separators=(',',':'))
+logistica_json = json.dumps(logistica, ensure_ascii=False, separators=(',',':'))
+
+html = r"""<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard de Transações — FIIs</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&family=Sora:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0b0f1a;
+    --surface:  #111827;
+    --surface2: #1a2235;
+    --border:   #1f2d45;
+    --border2:  #263450;
+    --text:     #e2e8f4;
+    --muted:    #8599b8;
+    --dim:      #4b6080;
+    --accent-s: #f59e0b;   /* shopping amber */
+    --accent-l: #38bdf8;   /* logistica blue */
+    --active:   #f59e0b;
+    --green:    #34d399;
+    --red:      #f87171;
+    --merged-bg:#151e30;
+    --row-alt:  #0f1929;
+    --header-h: 60px;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Sora', sans-serif;
+    font-size: 13px;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  .top-bar {
+    position: sticky; top: 0; z-index: 100;
+    height: var(--header-h);
+    background: rgba(11,15,26,0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 28px;
+  }
+
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .brand-icon {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px;
+  }
+  .brand-name {
+    font-size: 15px; font-weight: 700; letter-spacing: -0.3px;
+    color: var(--text);
+  }
+  .brand-sub {
+    font-size: 10px; color: var(--muted); font-family: 'DM Mono', monospace;
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+
+  .tab-group {
+    display: flex; gap: 4px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 4px;
+  }
+
+  .tab-btn {
+    padding: 7px 20px;
+    border: none; border-radius: 7px;
+    font-family: 'Sora', sans-serif;
+    font-size: 12px; font-weight: 600; cursor: pointer;
+    letter-spacing: 0.02em;
+    transition: all 0.2s;
+    background: transparent;
+    color: var(--muted);
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active-s {
+    background: linear-gradient(135deg, #f59e0b22, #f59e0b11);
+    color: var(--accent-s);
+    box-shadow: 0 0 0 1px #f59e0b33;
+  }
+  .tab-btn.active-l {
+    background: linear-gradient(135deg, #38bdf822, #38bdf811);
+    color: var(--accent-l);
+    box-shadow: 0 0 0 1px #38bdf833;
+  }
+
+  .top-right {
+    display: flex; align-items: center; gap: 12px;
+  }
+
+  /* ── Subheader ── */
+  .sub-bar {
+    padding: 16px 28px 0;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px;
+  }
+
+  .section-title {
+    font-size: 20px; font-weight: 700; letter-spacing: -0.5px;
+  }
+  .section-title .s-accent { color: var(--accent-s); }
+  .section-title .l-accent { color: var(--accent-l); }
+
+  .stats-row {
+    display: flex; gap: 10px;
+  }
+  .stat-pill {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 5px 12px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .stat-pill strong {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  /* ── Filter bar ── */
+  .filter-bar {
+    padding: 12px 28px;
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  }
+
+  .search-wrap {
+    position: relative; flex: 1; min-width: 200px; max-width: 340px;
+  }
+  .search-icon {
+    position: absolute; left: 11px; top: 50%; transform: translateY(-50%);
+    color: var(--dim); font-size: 13px; pointer-events: none;
+  }
+  .search-input {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px 8px 34px;
+    color: var(--text);
+    font-family: 'Sora', sans-serif;
+    font-size: 12px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .search-input::placeholder { color: var(--dim); }
+  .search-input:focus { border-color: var(--border2); }
+
+  .filter-select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: var(--text);
+    font-family: 'Sora', sans-serif;
+    font-size: 12px;
+    outline: none;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    padding-right: 28px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%234b6080' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    background-size: 16px;
+  }
+  .filter-select:focus { border-color: var(--border2); }
+
+  .count-badge {
+    margin-left: auto;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--dim);
+    white-space: nowrap;
+  }
+
+  /* ── Table wrapper ── */
+  .table-wrap {
+    padding: 0 28px 60px;
+    overflow-x: auto;
+  }
+
+  .table-wrap::-webkit-scrollbar { height: 6px; }
+  .table-wrap::-webkit-scrollbar-track { background: var(--bg); }
+  .table-wrap::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 900px;
+  }
+
+  thead tr th {
+    position: sticky; top: var(--header-h);
+    background: var(--surface);
+    padding: 10px 12px;
+    font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted);
+    text-align: left;
+    border-bottom: 1px solid var(--border2);
+    border-right: 1px solid var(--border);
+    white-space: nowrap;
+    user-select: none;
+    cursor: pointer;
+  }
+  thead tr th:last-child { border-right: none; }
+  thead tr th:hover { color: var(--text); background: var(--surface2); }
+  thead tr th.sort-asc::after { content: ' ↑'; color: var(--accent-s); }
+  thead tr th.sort-desc::after { content: ' ↓'; color: var(--accent-s); }
+
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+  }
+  tbody tr:hover { background: var(--surface); }
+  tbody tr:nth-child(even) { background: var(--row-alt); }
+  tbody tr:nth-child(even):hover { background: var(--surface); }
+
+  tbody td {
+    padding: 9px 12px;
+    color: var(--text);
+    border-right: 1px solid var(--border);
+    vertical-align: middle;
+    line-height: 1.4;
+  }
+  tbody td:last-child { border-right: none; }
+
+  /* Merged cell styling */
+  td.merged-master {
+    background: var(--merged-bg);
+    border-left: 2px solid var(--border2);
+    font-style: italic;
+  }
+
+  /* Column-specific styling */
+  .col-ativo { font-weight: 600; color: var(--text); min-width: 200px; max-width: 220px; }
+  .col-data { font-family: 'DM Mono', monospace; font-size: 11px; white-space: nowrap; color: var(--muted); }
+  .col-pct { font-family: 'DM Mono', monospace; font-size: 11px; text-align: right; color: var(--muted); }
+  .col-abl { font-family: 'DM Mono', monospace; font-size: 11px; text-align: right; color: var(--muted); }
+  .col-valor { font-family: 'DM Mono', monospace; font-size: 11px; text-align: right; font-weight: 500; color: #c8e0ff; }
+  .col-m2 { font-family: 'DM Mono', monospace; font-size: 11px; text-align: right; color: var(--muted); }
+  .col-cap { font-family: 'DM Mono', monospace; font-size: 11px; text-align: right; }
+  .col-name { color: var(--text); max-width: 150px; }
+  .col-struct { font-size: 11px; color: var(--muted); }
+  .col-details { font-size: 11px; color: var(--muted); max-width: 220px; }
+  .col-fonte { font-size: 11px; max-width: 140px; }
+  .col-cidade { font-size: 12px; color: var(--muted); }
+  .col-estado { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--dim); }
+
+  .link-fonte {
+    color: var(--accent-l);
+    text-decoration: none;
+    font-size: 10px;
+    font-family: 'DM Mono', monospace;
+    display: inline-block;
+    max-width: 130px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.15s;
+  }
+  .link-fonte:hover { border-color: var(--accent-l); }
+
+  .cap-high { color: var(--green); }
+  .cap-mid  { color: #fbbf24; }
+  .cap-low  { color: var(--red); }
+
+  .tag {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    font-family: 'DM Mono', monospace;
+    letter-spacing: 0.04em;
+  }
+  .tag-cash { background: #0d2e1a; color: #34d399; border: 1px solid #1a4a2a; }
+  .tag-sf   { background: #1e1505; color: #f59e0b; border: 1px solid #3d2a0a; }
+  .tag-mix  { background: #0d1e2e; color: #38bdf8; border: 1px solid #1a3a4a; }
+  .tag-other{ background: var(--surface); color: var(--muted); border: 1px solid var(--border); }
+
+  .dash { color: var(--dim); }
+
+  /* ── Section panel ── */
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* ── No results ── */
+  .no-results {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--dim);
+    font-size: 14px;
+  }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <div class="brand">
+    <div class="brand-icon">🏢</div>
+    <div>
+      <div class="brand-name">FII Transações</div>
+      <div class="brand-sub">Shoppings &amp; Logística</div>
+    </div>
+  </div>
+
+  <div class="tab-group">
+    <button class="tab-btn active-s" onclick="showPanel('shopping')" id="btn-shopping">
+      🛍 Shoppings
+    </button>
+    <button class="tab-btn" onclick="showPanel('logistica')" id="btn-logistica">
+      🏭 Logística
+    </button>
+  </div>
+
+  <div class="top-right">
+    <span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--dim);">Base atualizada 2025</span>
+  </div>
+</div>
+
+<!-- ===== SHOPPING PANEL ===== -->
+<div class="panel active" id="panel-shopping">
+  <div class="sub-bar">
+    <div>
+      <div class="section-title"><span class="s-accent">Shoppings</span> — Transações FII</div>
+    </div>
+    <div class="stats-row" id="stats-shopping"></div>
+  </div>
+
+  <div class="filter-bar">
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input class="search-input" id="search-shopping" type="text" placeholder="Buscar ativo, comprador, vendedor…" oninput="filterTable('shopping')">
+    </div>
+    <select class="filter-select" id="year-shopping" onchange="filterTable('shopping')">
+      <option value="">Todos os anos</option>
+    </select>
+    <select class="filter-select" id="buyer-shopping" onchange="filterTable('shopping')">
+      <option value="">Todos compradores</option>
+    </select>
+    <span class="count-badge" id="count-shopping"></span>
+  </div>
+
+  <div class="table-wrap">
+    <table id="tbl-shopping">
+      <thead id="thead-shopping"></thead>
+      <tbody id="tbody-shopping"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ===== LOGISTICA PANEL ===== -->
+<div class="panel" id="panel-logistica">
+  <div class="sub-bar">
+    <div>
+      <div class="section-title"><span class="l-accent">Logística</span> — Transações FII</div>
+    </div>
+    <div class="stats-row" id="stats-logistica"></div>
+  </div>
+
+  <div class="filter-bar">
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input class="search-input" id="search-logistica" type="text" placeholder="Buscar ativo, cidade, comprador…" oninput="filterTable('logistica')">
+    </div>
+    <select class="filter-select" id="year-logistica" onchange="filterTable('logistica')">
+      <option value="">Todos os anos</option>
+    </select>
+    <select class="filter-select" id="state-logistica" onchange="filterTable('logistica')">
+      <option value="">Todos estados</option>
+    </select>
+    <select class="filter-select" id="buyer-logistica" onchange="filterTable('logistica')">
+      <option value="">Todos compradores</option>
+    </select>
+    <span class="count-badge" id="count-logistica"></span>
+  </div>
+
+  <div class="table-wrap">
+    <table id="tbl-logistica">
+      <thead id="thead-logistica"></thead>
+      <tbody id="tbody-logistica"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+// ─── DATA ───────────────────────────────────────────────────────────────────
+""" + f"const SHOPPING={shopping_json};\nconst LOGISTICA={logistica_json};\n" + r"""
+
+// ─── UTILS ──────────────────────────────────────────────────────────────────
+const fmtBRL = v => {
+  if (v == null || v === '-' || v === '') return '<span class="dash">—</span>';
+  const n = Number(v);
+  if (isNaN(n)) return v;
+  if (n >= 1e9) return 'R$ ' + (n/1e9).toFixed(2).replace('.',',') + 'B';
+  if (n >= 1e6) return 'R$ ' + (n/1e6).toFixed(2).replace('.',',') + 'M';
+  if (n >= 1e3) return 'R$ ' + (n/1e3).toFixed(0) + 'K';
+  return 'R$ ' + n.toFixed(0);
+};
+
+const fmtM2 = v => {
+  if (v == null || v === '-' || v === '') return '<span class="dash">—</span>';
+  const n = Number(v);
+  if (isNaN(n)) return v;
+  return 'R$ ' + n.toLocaleString('pt-BR', {maximumFractionDigits:0}) + '/m²';
+};
+
+const fmtPct = v => {
+  if (v == null || v === '-' || v === '') return '<span class="dash">—</span>';
+  const n = Number(v);
+  if (isNaN(n)) return v;
+  return (n * 100).toFixed(2).replace('.', ',') + '%';
+};
+
+const fmtABL = v => {
+  if (v == null || v === '-' || v === '') return '<span class="dash">—</span>';
+  const n = Number(v);
+  if (isNaN(n)) return v;
+  return n.toLocaleString('pt-BR', {maximumFractionDigits:0}) + ' m²';
+};
+
+const fmtCap = v => {
+  if (v == null || v === '-' || v === '') return '<span class="dash">—</span>';
+  const n = Number(v);
+  if (isNaN(n)) return v;
+  const pct = (n*100).toFixed(2).replace('.', ',') + '%';
+  const cls = n >= 0.09 ? 'cap-high' : n >= 0.075 ? 'cap-mid' : 'cap-low';
+  return `<span class="${cls}">${pct}</span>`;
+};
+
+const fmtStruct = v => {
+  if (!v || v === '-') return '<span class="dash">—</span>';
+  const vs = String(v).trim().toLowerCase();
+  if (vs === 'cash') return '<span class="tag tag-cash">Cash</span>';
+  if (vs.includes('sellers') || vs.includes('finance')) return '<span class="tag tag-sf">Sellers Finance</span>';
+  if (vs.includes('+') || vs.includes('cotas')) return '<span class="tag tag-mix">Cotas + Cash</span>';
+  return `<span class="tag tag-other">${v}</span>`;
+};
+
+const fmtFonte = v => {
+  if (!v || v === '-') return '<span class="dash">—</span>';
+  const s = String(v);
+  if (s.startsWith('http')) {
+    const domain = s.replace(/https?:\/\//, '').split('/')[0].replace('www.','');
+    return `<a class="link-fonte" href="${s}" target="_blank" title="${s}">🔗 ${domain}</a>`;
+  }
+  return `<span style="font-size:11px;color:var(--muted)">${s}</span>`;
+};
+
+const fmtVal = v => {
+  if (v == null || v === '-') return '<span class="dash">—</span>';
+  return String(v);
+};
+
+// ─── SHOPPING CONFIG ─────────────────────────────────────────────────────────
+const S_HEADERS = ['Ativo','Data','%','ABL Total','ABL Transação','Valor Transação','Valor/m²','Cap rate','Comprador','Vendedor','Estrutura','Detalhes','Fonte'];
+const S_COLS = [
+  {cls:'col-ativo',  fmt: v => `<span style="font-weight:600">${v||'—'}</span>`},
+  {cls:'col-data',   fmt: v => v || '<span class="dash">—</span>'},
+  {cls:'col-pct',    fmt: fmtPct},
+  {cls:'col-abl',    fmt: fmtABL},
+  {cls:'col-abl',    fmt: fmtABL},
+  {cls:'col-valor',  fmt: fmtBRL},
+  {cls:'col-m2',     fmt: fmtM2},
+  {cls:'col-cap',    fmt: fmtCap},
+  {cls:'col-name',   fmt: fmtVal},
+  {cls:'col-name',   fmt: fmtVal},
+  {cls:'col-struct', fmt: fmtStruct},
+  {cls:'col-details',fmt: fmtVal},
+  {cls:'col-fonte',  fmt: fmtFonte},
+];
+
+// ─── LOGISTICA CONFIG ────────────────────────────────────────────────────────
+const L_HEADERS = ['Ativo','Cidade','Estado','Data','%','ABL Transação','ABL Total','Valor Transação','R$/m²','Cap rate','Comprador','Vendedor','Estrutura','Detalhes','Fonte'];
+const L_COLS = [
+  {cls:'col-ativo',  fmt: v => `<span style="font-weight:600">${v||'—'}</span>`},
+  {cls:'col-cidade', fmt: fmtVal},
+  {cls:'col-estado', fmt: fmtVal},
+  {cls:'col-data',   fmt: v => v || '<span class="dash">—</span>'},
+  {cls:'col-pct',    fmt: fmtPct},
+  {cls:'col-abl',    fmt: fmtABL},
+  {cls:'col-abl',    fmt: fmtABL},
+  {cls:'col-valor',  fmt: fmtBRL},
+  {cls:'col-m2',     fmt: fmtM2},
+  {cls:'col-cap',    fmt: fmtCap},
+  {cls:'col-name',   fmt: fmtVal},
+  {cls:'col-name',   fmt: fmtVal},
+  {cls:'col-struct', fmt: fmtStruct},
+  {cls:'col-details',fmt: fmtVal},
+  {cls:'col-fonte',  fmt: fmtFonte},
+];
+
+// ─── STATE ───────────────────────────────────────────────────────────────────
+let activePanel = 'shopping';
+let sortCol = {shopping: -1, logistica: -1};
+let sortDir = {shopping: 1, logistica: 1};
+let filteredRows = {shopping: [], logistica: []};
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+function init() {
+  buildHeaders('shopping', S_HEADERS);
+  buildHeaders('logistica', L_HEADERS);
+  buildFilters('shopping');
+  buildFilters('logistica');
+  filterTable('shopping');
+  filterTable('logistica');
+}
+
+function buildHeaders(panel, headers) {
+  const thead = document.getElementById('thead-' + panel);
+  const tr = document.createElement('tr');
+  headers.forEach((h, i) => {
+    const th = document.createElement('th');
+    th.textContent = h;
+    th.dataset.col = i;
+    th.onclick = () => sortTable(panel, i);
+    tr.appendChild(th);
+  });
+  thead.appendChild(tr);
+}
+
+function buildFilters(panel) {
+  const data = panel === 'shopping' ? SHOPPING : LOGISTICA;
+  const colDate = panel === 'shopping' ? 1 : 3;
+  const colBuyer = panel === 'shopping' ? 8 : 10;
+  const colState = panel === 'logistica' ? 2 : -1;
+
+  const years = new Set();
+  const buyers = new Set();
+  const states = new Set();
+
+  data.slice(1).forEach(row => {
+    const dateVal = row[colDate]?.v;
+    if (dateVal && typeof dateVal === 'string') {
+      const yr = dateVal.split('/')[1];
+      if (yr) years.add(yr);
+    }
+    const buyer = row[colBuyer]?.v;
+    if (buyer && buyer !== '-') buyers.add(String(buyer));
+    if (colState >= 0) {
+      const st = row[colState]?.v;
+      if (st && st !== '-') states.add(String(st));
+    }
+  });
+
+  const yearSel = document.getElementById('year-' + panel);
+  [...years].sort().forEach(y => {
+    const opt = document.createElement('option');
+    opt.value = y; opt.textContent = y;
+    yearSel.appendChild(opt);
+  });
+
+  const buyerSel = document.getElementById('buyer-' + panel);
+  [...buyers].sort().forEach(b => {
+    const opt = document.createElement('option');
+    opt.value = b; opt.textContent = b;
+    buyerSel.appendChild(opt);
+  });
+
+  if (colState >= 0) {
+    const stateSel = document.getElementById('state-' + panel);
+    [...states].sort().forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s; opt.textContent = s;
+      stateSel.appendChild(opt);
+    });
+  }
+}
+
+// ─── FILTER ──────────────────────────────────────────────────────────────────
+function filterTable(panel) {
+  const data = panel === 'shopping' ? SHOPPING : LOGISTICA;
+  const cols = panel === 'shopping' ? S_COLS : L_COLS;
+
+  const colDate  = panel === 'shopping' ? 1 : 3;
+  const colBuyer = panel === 'shopping' ? 8 : 10;
+  const colState = panel === 'logistica' ? 2 : -1;
+
+  const search = (document.getElementById('search-' + panel)?.value || '').toLowerCase().trim();
+  const year   = document.getElementById('year-' + panel)?.value || '';
+  const buyer  = document.getElementById('buyer-' + panel)?.value || '';
+  const state  = colState >= 0 ? (document.getElementById('state-' + panel)?.value || '') : '';
+
+  // We need to handle merged rows — filter by group
+  // Build "group" info: rows that are part of a merged group share values
+  // For filtering purposes, we filter on the full row value (even if in merged cell)
+
+  const rawRows = data.slice(1);
+  
+  // Pre-compute group context: propagate merged cell values
+  // For each row, collect the effective values (following merged parents)
+  function getEffVal(rowIdx, colIdx) {
+    const row = rawRows[rowIdx];
+    if (!row || !row[colIdx]) return null;
+    const cell = row[colIdx];
+    if (cell.v != null) return cell.v;
+    // Look upward for merged master
+    for (let r = rowIdx - 1; r >= 0; r--) {
+      const c = rawRows[r]?.[colIdx];
+      if (!c) break;
+      if (c.v != null && c.rs > 1 && r + c.rs - 1 >= rowIdx) return c.v;
+      if (c.v != null) break;
+    }
+    return null;
+  }
+
+  const filtered = [];
+  rawRows.forEach((row, ri) => {
+    // Build searchable text from all columns
+    const allText = row.map((cell, ci) => {
+      if (cell.skip) return '';
+      const v = cell.v ?? getEffVal(ri, ci);
+      return v ? String(v).toLowerCase() : '';
+    }).join(' ');
+
+    // Get effective date/buyer/state
+    const effDate  = String(getEffVal(ri, colDate) || '');
+    const effBuyer = String(getEffVal(ri, colBuyer) || '');
+    const effState = colState >= 0 ? String(getEffVal(ri, colState) || '') : '';
+
+    if (search && !allText.includes(search)) return;
+    if (year && !effDate.includes('/' + year)) return;
+    if (buyer && effBuyer !== buyer) return;
+    if (state && effState !== state) return;
+
+    filtered.push({row, ri});
+  });
+
+  filteredRows[panel] = filtered;
+  renderTable(panel, cols);
+  updateStats(panel);
+}
+
+// ─── SORT ────────────────────────────────────────────────────────────────────
+function sortTable(panel, col) {
+  if (sortCol[panel] === col) {
+    sortDir[panel] *= -1;
+  } else {
+    sortCol[panel] = col;
+    sortDir[panel] = 1;
+  }
+  const cols = panel === 'shopping' ? S_COLS : L_COLS;
+  const theadId = 'thead-' + panel;
+  document.querySelectorAll('#' + theadId + ' th').forEach((th, i) => {
+    th.classList.remove('sort-asc','sort-desc');
+    if (i === col) th.classList.add(sortDir[panel] === 1 ? 'sort-asc' : 'sort-desc');
+  });
+
+  filteredRows[panel].sort((a, b) => {
+    const va = a.row[col]?.v ?? '';
+    const vb = b.row[col]?.v ?? '';
+    const na = Number(va), nb = Number(vb);
+    if (!isNaN(na) && !isNaN(nb)) return (na - nb) * sortDir[panel];
+    return String(va).localeCompare(String(vb), 'pt-BR') * sortDir[panel];
+  });
+
+  renderTable(panel, cols);
+}
+
+// ─── RENDER ──────────────────────────────────────────────────────────────────
+function renderTable(panel, cols) {
+  const tbody = document.getElementById('tbody-' + panel);
+  const rows = filteredRows[panel];
+
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="${cols.length}" class="no-results">Nenhuma transação encontrada.</td></tr>`;
+    return;
+  }
+
+  const fragments = [];
+  rows.forEach(({row, ri}) => {
+    const tr = document.createElement('tr');
+    row.forEach((cell, ci) => {
+      if (ci >= cols.length) return;
+      if (cell.skip) return;
+
+      const td = document.createElement('td');
+      const cfg = cols[ci];
+      td.className = cfg.cls || '';
+
+      const v = cell.v;
+
+      if (cell.rs > 1 || cell.cs > 1) {
+        if (cell.rs > 1) td.rowSpan = cell.rs;
+        if (cell.cs > 1) td.colSpan = cell.cs;
+        td.classList.add('merged-master');
+      }
+
+      td.innerHTML = cfg.fmt(v);
+      tr.appendChild(td);
+    });
+    fragments.push(tr);
+  });
+
+  tbody.innerHTML = '';
+  fragments.forEach(tr => tbody.appendChild(tr));
+}
+
+// ─── STATS ───────────────────────────────────────────────────────────────────
+function updateStats(panel) {
+  const data = panel === 'shopping' ? SHOPPING : LOGISTICA;
+  const rows = filteredRows[panel];
+  const colVal = panel === 'shopping' ? 5 : 7;
+  const colCap = panel === 'shopping' ? 7 : 9;
+
+  let totalVal = 0, capSum = 0, capCount = 0;
+  const seen = new Set(); // avoid double-counting merged values
+
+  rows.forEach(({row, ri}) => {
+    const vCell = row[colVal];
+    if (vCell && !vCell.skip && vCell.v != null) {
+      const key = `${ri}_${colVal}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        const n = Number(vCell.v);
+        if (!isNaN(n)) totalVal += n;
+      }
+    }
+    const cCell = row[colCap];
+    if (cCell && !cCell.skip && cCell.v != null && cCell.v !== '-') {
+      const n = Number(cCell.v);
+      if (!isNaN(n) && n > 0) { capSum += n; capCount++; }
+    }
+  });
+
+  const avgCap = capCount ? (capSum/capCount*100).toFixed(2).replace('.',',') + '%' : '—';
+  const totalFmt = totalVal >= 1e9
+    ? 'R$ ' + (totalVal/1e9).toFixed(2).replace('.',',') + 'B'
+    : 'R$ ' + (totalVal/1e6).toFixed(1).replace('.',',') + 'M';
+
+  const el = document.getElementById('stats-' + panel);
+  el.innerHTML = `
+    <div class="stat-pill"><strong>${rows.length}</strong> transações</div>
+    <div class="stat-pill">Volume: <strong>${totalFmt}</strong></div>
+    <div class="stat-pill">Cap rate médio: <strong>${avgCap}</strong></div>
+  `;
+
+  document.getElementById('count-' + panel).textContent =
+    rows.length + ' de ' + (data.length - 1) + ' resultados';
+}
+
+// ─── PANEL SWITCH ────────────────────────────────────────────────────────────
+function showPanel(name) {
+  activePanel = name;
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+
+  const btnS = document.getElementById('btn-shopping');
+  const btnL = document.getElementById('btn-logistica');
+  btnS.className = 'tab-btn' + (name === 'shopping' ? ' active-s' : '');
+  btnL.className = 'tab-btn' + (name === 'logistica' ? ' active-l' : '');
+}
+
+// ─── START ───────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
+"""
+
+with open('/mnt/user-data/outputs/dashboard_fiis.html', 'w', encoding='utf-8') as f:
+    f.write(html)
+
+print("HTML written:", len(html)//1024, "KB")
+PYEOF
+Saída
+
+HTML written: 222 KB
