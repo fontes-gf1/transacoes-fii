@@ -416,6 +416,19 @@
         Chart.defaults.font.family = "'Segoe UI', 'Helvetica', 'Arial', sans-serif";
         Chart.defaults.color = "#666";
 
+        // NOVIDADE: Quando a página carregar, verifica se tem dados na memória
+        window.onload = function() {
+            const savedData = localStorage.getItem('fiiDashboardData');
+            if (savedData) {
+                // Se achou dados na memória, carrega eles direto
+                dataCombined = JSON.parse(savedData);
+                document.getElementById('initialUploadArea').style.display = 'none';
+                document.getElementById('mainDashboardArea').style.display = 'block';
+                populateFilters();
+                filterDataAndRender(); 
+            }
+        };
+
         function processFile() {
             const fileInput = document.getElementById('csvFileInput');
             if (!fileInput.files.length) return;
@@ -432,30 +445,20 @@
                     }
 
                     dataCombined = results.data.map(row => {
-                        // Função MELHORADA para entender o formato numérico do Brasil no Excel
                         const parseNumber = (val, isM2 = false) => {
                             if (!val || val.trim() === '-' || val.trim() === '') return null;
                             let str = val.toString().replace('R$', '').replace('%', '').trim();
-                            
-                            // 1º Passo: Remove TODOS os pontos (separadores de milhar do Brasil)
-                            // Ex: 15.773,26 vira 15773,26
                             str = str.replace(/\./g, ''); 
-                            
-                            // 2º Passo: Troca a vírgula (decimal do Brasil) por ponto (decimal do código)
-                            // Ex: 15773,26 vira 15773.26
                             str = str.replace(',', '.'); 
-                            
                             const num = parseFloat(str);
                             return isNaN(num) ? null : num;
                         };
 
                         const cleanedData = {...row};
                         
-                        // Busca pelas colunas reais (cobre as diferenças de Shop para Logística)
                         const valorRaw = row['Valor Transação (R$)'];
                         const m2Raw = row['Valor/m²'] || row['R$/m²'];
                         
-                        // Converte o valor financeiro cheio para milhões, APENAS se já não estiver em milhões
                         let numValorRaw = parseNumber(valorRaw);
                         let valorMilhoes = null;
                         if (numValorRaw !== null) {
@@ -466,10 +469,13 @@
                             capRate: parseNumber(row['Cap rate']),
                             valor: valorMilhoes,
                             abl: parseNumber(row['ABL Total']?.replace(' mil', '').replace(' m2', '')),
-                            valorM2: parseNumber(m2Raw, true) // Passa pela nova função corrigida
+                            valorM2: parseNumber(m2Raw, true)
                         };
                         return cleanedData;
                     });
+
+                    // NOVIDADE: Salva os dados processados na memória do navegador
+                    localStorage.setItem('fiiDashboardData', JSON.stringify(dataCombined));
 
                     document.getElementById('initialUploadArea').style.display = 'none';
                     document.getElementById('mainDashboardArea').style.display = 'block';
@@ -551,7 +557,6 @@
             document.getElementById('kpi-volume-sub').textContent = `${validValues.length} com valor`;
             document.getElementById('kpi-cap').textContent = `${capMedio.toFixed(1).replace('.', ',')}%`;
             document.getElementById('kpi-cap-sub').textContent = `${validCapRates.length} ativos`;
-            // Formatação corrigida do KPI para exibir casa de milhar perfeitamente
             document.getElementById('kpi-valorm2').textContent = `R$ ${avgValorM2.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
             document.getElementById('kpi-abl').textContent = `${totalABL.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} mil`;
         }
