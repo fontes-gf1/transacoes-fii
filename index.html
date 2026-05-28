@@ -432,16 +432,19 @@
                     }
 
                     dataCombined = results.data.map(row => {
-                        // Função inteligente para entender o formato numérico do Brasil no Excel
-                        const parseNumber = (val) => {
+                        // Função MELHORADA para entender o formato numérico do Brasil no Excel
+                        const parseNumber = (val, isM2 = false) => {
                             if (!val || val.trim() === '-' || val.trim() === '') return null;
                             let str = val.toString().replace('R$', '').replace('%', '').trim();
-                            // Corrige 1.234,56 para 1234.56
-                            if (str.includes('.') && str.includes(',')) {
-                                str = str.replace(/\./g, '').replace(',', '.'); 
-                            } else if (str.includes(',')) {
-                                str = str.replace(',', '.'); 
-                            }
+                            
+                            // 1º Passo: Remove TODOS os pontos (separadores de milhar do Brasil)
+                            // Ex: 15.773,26 vira 15773,26
+                            str = str.replace(/\./g, ''); 
+                            
+                            // 2º Passo: Troca a vírgula (decimal do Brasil) por ponto (decimal do código)
+                            // Ex: 15773,26 vira 15773.26
+                            str = str.replace(',', '.'); 
+                            
                             const num = parseFloat(str);
                             return isNaN(num) ? null : num;
                         };
@@ -452,7 +455,7 @@
                         const valorRaw = row['Valor Transação (R$)'];
                         const m2Raw = row['Valor/m²'] || row['R$/m²'];
                         
-                        // Converte o valor financeiro cheio (ex: 54000000) para milhões (54)
+                        // Converte o valor financeiro cheio para milhões, APENAS se já não estiver em milhões
                         let numValorRaw = parseNumber(valorRaw);
                         let valorMilhoes = null;
                         if (numValorRaw !== null) {
@@ -463,7 +466,7 @@
                             capRate: parseNumber(row['Cap rate']),
                             valor: valorMilhoes,
                             abl: parseNumber(row['ABL Total']?.replace(' mil', '').replace(' m2', '')),
-                            valorM2: parseNumber(m2Raw)
+                            valorM2: parseNumber(m2Raw, true) // Passa pela nova função corrigida
                         };
                         return cleanedData;
                     });
@@ -495,7 +498,7 @@
             };
 
             fillDropdown('filterTipo', 'Tipo');
-            fillDropdown('filterComprador', 'Comprador'); // Atualizado
+            fillDropdown('filterComprador', 'Comprador'); 
             fillDropdown('filterVendedor', 'Vendedor');
             fillDropdown('filterEstrutura', 'Estrutura');
         }
@@ -510,7 +513,7 @@
             dataFiltered = dataCombined.filter(item => {
                 const matchSearch = item['Ativo']?.toLowerCase().includes(searchText) || item['Tipo']?.toLowerCase().includes(searchText);
                 const matchTipo = !filterTipo || item['Tipo'] === filterTipo;
-                const matchComprador = !filterComprador || item['Comprador'] === filterComprador; // Atualizado
+                const matchComprador = !filterComprador || item['Comprador'] === filterComprador; 
                 const matchVendedor = !filterVendedor || item['Vendedor'] === filterVendedor;
                 const matchEstrutura = !filterEstrutura || item['Estrutura'] === filterEstrutura;
                 return matchSearch && matchTipo && matchComprador && matchVendedor && matchEstrutura;
@@ -548,7 +551,8 @@
             document.getElementById('kpi-volume-sub').textContent = `${validValues.length} com valor`;
             document.getElementById('kpi-cap').textContent = `${capMedio.toFixed(1).replace('.', ',')}%`;
             document.getElementById('kpi-cap-sub').textContent = `${validCapRates.length} ativos`;
-            document.getElementById('kpi-valorm2').textContent = `R$ ${avgValorM2.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
+            // Formatação corrigida do KPI para exibir casa de milhar perfeitamente
+            document.getElementById('kpi-valorm2').textContent = `R$ ${avgValorM2.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
             document.getElementById('kpi-abl').textContent = `${totalABL.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} mil`;
         }
 
@@ -618,7 +622,6 @@
             });
 
             const valorM2ByComprador = {};
-            // Atualizado: 'Comprador' em vez de 'Fundo / Comprador'
             dataFiltered.filter(i => i._numeric.valorM2 !== null && i['Comprador']).forEach(item => {
                 const comprador = item['Comprador'];
                 if (!valorM2ByComprador[comprador]) valorM2ByComprador[comprador] = { total: 0, count: 0 };
@@ -637,7 +640,6 @@
                 return;
             }
 
-            // Define os cabeçalhos visuais
             const headers = ['Ativo', 'Tipo', 'Data', '%', 'ABL Total', 'Valor Transação', 'Valor/m²', 'Cap Rate'];
 
             let html = `<table><thead><tr>`;
@@ -651,7 +653,6 @@
 
                 for (let j = i + 1; j < dataFiltered.length; j++) {
                     let isSamePortfolio = true;
-                    // Lógica corrigida para agrupar portfólios usando os cabeçalhos reais
                     if (dataFiltered[j]['Data'] !== row['Data'] || 
                         dataFiltered[j]['Valor Transação (R$)'] !== row['Valor Transação (R$)'] || 
                         dataFiltered[j]['Comprador'] !== row['Comprador']) {
@@ -660,7 +661,6 @@
                     if (isSamePortfolio && row['Data']) rowspan++; else break;
                 }
 
-                // Chaves de ligação (Mapeamento visual da tabela => coluna real no CSV)
                 const mergedColsMapping = {
                     'Data': 'Data', 
                     '%': '%', 
@@ -672,12 +672,11 @@
                 const renderCell = (h, dataRow, isFirstLine = false) => {
                     if (mergedColsMapping[h]) {
                         if (isFirstLine) return `<td rowspan="${rowspan}">${dataRow[mergedColsMapping[h]] || '-'}</td>`;
-                        return ''; // Esconde se for célula agrupada
+                        return ''; 
                     } else if (h === 'Tipo') {
                         const tagClass = dataRow['Tipo'] === 'Shopping' ? 'tag-shopping' : (dataRow['Tipo'] === 'Galpão Logístico' ? 'tag-logistica' : '');
                         return `<td><span class="type-tag ${tagClass}">${dataRow['Tipo'] || '-'}</span></td>`;
                     } else if (h === 'Valor/m²') {
-                        // Tenta as duas colunas
                         const valM2 = dataRow['Valor/m²'] || dataRow['R$/m²'] || '-';
                         return `<td>${valM2}</td>`;
                     } else {
