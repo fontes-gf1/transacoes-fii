@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard Executivo de Transações de Real Estate</title>
-    <!-- Importa as bibliotecas necessárias -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
@@ -40,7 +39,6 @@
             gap: 20px;
         }
 
-        /* Cabeçalho e Botão de Importar */
         .header {
             display: flex;
             justify-content: space-between;
@@ -57,42 +55,7 @@
             color: #666;
             font-size: 1em;
         }
-        .import-controls {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-        .file-input-wrapper {
-            position: relative;
-            overflow: hidden;
-            display: inline-block;
-        }
-        .file-input-wrapper input[type=file] {
-            font-size: 100px;
-            position: absolute;
-            left: 0;
-            top: 0;
-            opacity: 0;
-            cursor: pointer;
-        }
-        .import-btn {
-            background: white;
-            border: 1px solid #ccc;
-            padding: 8px 16px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: 500;
-            color: #000;
-            transition: background 0.3s;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .import-btn:hover {
-            background: #f0f0f0;
-        }
 
-        /* Cards de KPI */
         .kpi-row {
             display: grid;
             grid-template-columns: repeat(5, 1fr);
@@ -120,7 +83,6 @@
             color: #888;
         }
 
-        /* Seção de Gráficos */
         .charts-section {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
@@ -160,7 +122,6 @@
             height: 350px;
         }
 
-        /* Seção de Filtros */
         .filters-card {
             background: var(--card-bg);
             padding: 20px;
@@ -209,7 +170,6 @@
             border-color: #aaa;
         }
 
-        /* Tabela */
         .table-card {
             background: var(--card-bg);
             padding: 0;
@@ -234,7 +194,6 @@
         tr:last-child td {
             border-bottom: none;
         }
-        /* Estilo de Tag para 'Tipo' */
         .type-tag {
             padding: 4px 10px;
             border-radius: 12px;
@@ -249,7 +208,6 @@
             background-color: var(--tag-logistica);
             color: var(--tag-logistica-text);
         }
-        /* Células Mescladas do Portfólio */
         td[rowspan] {
             background-color: #ffffff;
             font-weight: 500;
@@ -260,7 +218,6 @@
             background-color: #f9f9f9;
         }
 
-        /* Setas para rolagem */
         .down-arrow {
             text-align: center;
             color: #aaa;
@@ -268,7 +225,10 @@
             font-size: 1.2em;
         }
 
-        /* Esconder tudo no início */
+        #loadingState {
+            text-align: center;
+            padding: 100px 0;
+        }
         #mainDashboardArea {
             display: none;
         }
@@ -277,23 +237,19 @@
 <body>
 
     <div class="dashboard-wrapper">
-        <!-- Cabeçalho -->
         <div class="header">
             <div class="header-titles">
                 <h1>Transações de Real Estate</h1>
                 <p>Shoppings & Galpões Logísticos</p>
             </div>
-            <div class="import-controls">
-                <div class="file-input-wrapper">
-                    <button class="import-btn"><i class="fas fa-file-upload"></i> Importar Excel</button>
-                    <input type="file" id="csvFileInput" accept=".csv" onchange="processFile()">
-                </div>
-            </div>
         </div>
 
-        <!-- Área principal do Dashboard (escondida até o upload) -->
+        <div id="loadingState">
+            <i class="fas fa-spinner fa-spin" style="font-size: 3em; color: var(--primary-blue); margin-bottom: 20px;"></i>
+            <h2>Carregando base de transações...</h2>
+        </div>
+
         <div id="mainDashboardArea">
-            <!-- KPIs -->
             <div class="kpi-row">
                 <div class="kpi-card">
                     <div class="kpi-title">Ativos</div>
@@ -324,7 +280,6 @@
 
             <div class="down-arrow"><i class="fas fa-chevron-down"></i></div>
 
-            <!-- Gráficos Row 1 -->
             <div class="charts-section">
                 <div class="chart-card">
                     <div class="chart-header">
@@ -354,7 +309,6 @@
 
             <div class="down-arrow"><i class="fas fa-chevron-down"></i></div>
 
-            <!-- Gráficos Row 2 + Filtros -->
             <div class="charts-section">
                 <div class="chart-card">
                     <div class="chart-header">
@@ -380,7 +334,6 @@
 
             <div class="down-arrow"><i class="fas fa-chevron-down"></i></div>
 
-            <!-- Filtros e Tabela -->
             <div class="filters-card">
                 <div class="search-wrapper">
                     <i class="fas fa-search"></i>
@@ -397,55 +350,30 @@
 
             <div class="table-card" id="tableContainer"></div>
         </div>
-
-        <!-- Tela inicial -->
-        <div id="initialUploadArea" style="text-align: center; padding: 100px 0;">
-            <i class="fas fa-file-excel" style="font-size: 4em; color: #ccc; margin-bottom: 20px;"></i>
-            <h2>Bem-vindo</h2>
-            <p>Por favor, clique em 'Importar Excel' acima e selecione o arquivo CSV<br>da sua base de transações de real estate para começar.</p>
-        </div>
     </div>
 
     <script>
-        // Variáveis de estado global
         let dataCombined = [];
         let dataFiltered = [];
         let charts = {}; 
 
-        // Configuração dos gráficos
         Chart.defaults.font.family = "'Segoe UI', 'Helvetica', 'Arial', sans-serif";
         Chart.defaults.color = "#666";
 
-        // NOVIDADE: Quando a página carregar, verifica se tem dados na memória
+        // Baixa o arquivo automaticamente quando a página abre
         window.onload = function() {
-            const savedData = localStorage.getItem('fiiDashboardData');
-            if (savedData) {
-                // Se achou dados na memória, carrega eles direto
-                dataCombined = JSON.parse(savedData);
-                document.getElementById('initialUploadArea').style.display = 'none';
-                document.getElementById('mainDashboardArea').style.display = 'block';
-                populateFilters();
-                filterDataAndRender(); 
-            }
-        };
-
-        function processFile() {
-            const fileInput = document.getElementById('csvFileInput');
-            if (!fileInput.files.length) return;
-
-            Papa.parse(fileInput.files[0], {
+            Papa.parse("base_transacoes.csv", {
+                download: true, // Avisa o código que é um arquivo externo
                 header: true,
                 skipEmptyLines: true,
                 complete: function(results) {
-                    fileInput.value = ''; 
-                    
                     if (results.data.length === 0) {
-                        alert('Arquivo CSV vazio ou sem dados válidos.');
+                        document.getElementById('loadingState').innerHTML = '<h2>Erro: Arquivo base_transacoes.csv vazio ou não encontrado.</h2>';
                         return;
                     }
 
                     dataCombined = results.data.map(row => {
-                        const parseNumber = (val, isM2 = false) => {
+                        const parseNumber = (val) => {
                             if (!val || val.trim() === '-' || val.trim() === '') return null;
                             let str = val.toString().replace('R$', '').replace('%', '').trim();
                             str = str.replace(/\./g, ''); 
@@ -455,7 +383,6 @@
                         };
 
                         const cleanedData = {...row};
-                        
                         const valorRaw = row['Valor Transação (R$)'];
                         const m2Raw = row['Valor/m²'] || row['R$/m²'];
                         
@@ -469,25 +396,22 @@
                             capRate: parseNumber(row['Cap rate']),
                             valor: valorMilhoes,
                             abl: parseNumber(row['ABL Total']?.replace(' mil', '').replace(' m2', '')),
-                            valorM2: parseNumber(m2Raw, true)
+                            valorM2: parseNumber(m2Raw)
                         };
                         return cleanedData;
                     });
 
-                    // NOVIDADE: Salva os dados processados na memória do navegador
-                    localStorage.setItem('fiiDashboardData', JSON.stringify(dataCombined));
-
-                    document.getElementById('initialUploadArea').style.display = 'none';
+                    document.getElementById('loadingState').style.display = 'none';
                     document.getElementById('mainDashboardArea').style.display = 'block';
 
                     populateFilters();
                     filterDataAndRender(); 
                 },
                 error: function(err) {
-                    alert('Erro ao ler o arquivo: ' + err.message);
+                    document.getElementById('loadingState').innerHTML = `<h2>Erro ao ler o arquivo: ${err.message}. Verifique se você subiu o arquivo base_transacoes.csv no GitHub.</h2>`;
                 }
             });
-        }
+        };
 
         function populateFilters() {
             const uniqueValues = (key) => [...new Set(dataCombined.map(item => item[key]).filter(Boolean))].sort();
