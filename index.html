@@ -3,158 +3,457 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard de Transações Imobiliárias</title>
+    <title>Dashboard Executivo de Transações de Real Estate</title>
+    <!-- Importa as bibliotecas necessárias -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
+        :root {
+            --bg-color: #f6f6f6;
+            --card-bg: #ffffff;
+            --primary-blue: #4a90e2;
+            --secondary-green: #7ac142;
+            --accent-orange: #d17e2c;
+            --tag-shopping: #e1f1ff;
+            --tag-shopping-text: #0066cc;
+            --tag-logistica: #e1f9f2;
+            --tag-logistica-text: #009966;
+            --text-color: #333333;
+            --border-radius: 12px;
+            --soft-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             margin: 0;
             padding: 20px;
-            background-color: #f8f9fa;
-            color: #333;
+            background-color: var(--bg-color);
+            color: var(--text-color);
         }
-        h1 {
-            color: #2c3e50;
-            border-bottom: 2px solid #3498db;
-            padding-bottom: 10px;
+
+        .dashboard-wrapper {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
         }
-        .controls {
-            background: #ffffff;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-            margin-bottom: 20px;
+
+        /* Cabeçalho e Botão de Importar */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
         }
-        .btn-group {
-            margin-bottom: 20px;
+        .header-titles h1 {
+            margin: 0;
+            font-size: 1.8em;
+            color: #000;
         }
-        .btn-group button {
-            padding: 10px 20px;
-            margin-right: 10px;
-            border: none;
+        .header-titles p {
+            margin: 2px 0 0 0;
+            color: #666;
+            font-size: 1em;
+        }
+        .import-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .file-input-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+        }
+        .file-input-wrapper input[type=file] {
+            font-size: 100px;
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
             cursor: pointer;
-            background: #34495e;
-            color: white;
-            border-radius: 4px;
-            font-weight: bold;
+        }
+        .import-btn {
+            background: white;
+            border: 1px solid #ccc;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            color: #000;
             transition: background 0.3s;
-        }
-        .btn-group button:hover {
-            background: #2c3e50;
-        }
-        .file-upload {
-            border-top: 1px solid #ecf0f1;
-            padding-top: 15px;
             display: flex;
             align-items: center;
+            gap: 8px;
+        }
+        .import-btn:hover {
+            background: #f0f0f0;
+        }
+
+        /* Cards de KPI */
+        .kpi-row {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
             gap: 15px;
         }
-        select, input[type="file"], button.upload-btn {
-            padding: 8px;
-            border: 1px solid #bdc3c7;
-            border-radius: 4px;
+        .kpi-card {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: var(--border-radius);
+            box-shadow: var(--soft-shadow);
         }
-        button.upload-btn {
-            background: #27ae60;
-            color: white;
-            border: none;
-            cursor: pointer;
+        .kpi-title {
+            color: #666;
+            font-size: 0.9em;
+            margin-bottom: 8px;
+        }
+        .kpi-value {
+            font-size: 2em;
             font-weight: bold;
+            color: #000;
+            margin-bottom: 4px;
         }
-        button.upload-btn:hover {
-            background: #2ecc71;
+        .kpi-subtitle {
+            font-size: 0.9em;
+            color: #888;
         }
-        .table-wrapper {
-            overflow-x: auto;
-            background: #fff;
+
+        /* Seção de Gráficos */
+        .charts-section {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+        .chart-card {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: var(--border-radius);
+            box-shadow: var(--soft-shadow);
+            display: flex;
+            flex-direction: column;
+        }
+        .chart-header {
+            margin-bottom: 15px;
+        }
+        .chart-title {
+            font-size: 1.1em;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        .chart-legend {
+            font-size: 0.9em;
+            color: #666;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+        }
+        .chart-wrapper {
+            flex-grow: 1;
+            position: relative;
+            height: 350px;
+        }
+
+        /* Seção de Filtros */
+        .filters-card {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: var(--border-radius);
+            box-shadow: var(--soft-shadow);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .search-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+        .filter-icon {
+            color: #666;
+            margin-right: 10px;
+        }
+        .search-wrapper input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
             border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            padding-left: 35px;
+        }
+        .search-wrapper i.fa-search {
+            position: absolute;
+            left: 12px;
+            color: #ccc;
+        }
+        .dropdown-wrapper {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+        .dropdown-wrapper select {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            appearance: none;
+            background-color: white;
+            cursor: pointer;
+        }
+        .dropdown-wrapper select:focus {
+            outline: none;
+            border-color: #aaa;
+        }
+
+        /* Tabela */
+        .table-card {
+            background: var(--card-bg);
+            padding: 0;
+            border-radius: var(--border-radius);
+            box-shadow: var(--soft-shadow);
+            overflow-x: auto;
         }
         table {
             width: 100%;
             border-collapse: collapse;
-            white-space: nowrap;
+            font-size: 0.95em;
         }
         th, td {
-            border: 1px solid #ecf0f1;
-            padding: 12px 15px;
             text-align: left;
-            font-size: 0.9em;
+            padding: 15px;
+            border-bottom: 1px solid #eee;
         }
         th {
-            background-color: #3498db;
-            color: white;
-            position: sticky;
-            top: 0;
+            color: #666;
+            font-weight: 600;
         }
-        tr:nth-child(even) td {
-            background-color: #fcfcfc;
+        tr:last-child td {
+            border-bottom: none;
         }
-        tr:hover td {
-            background-color: #f1f8ff;
+        /* Estilo de Tag para 'Tipo' */
+        .type-tag {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-weight: 500;
+            font-size: 0.85em;
         }
-        /* Destaca as células mescladas das transações de portfólio */
+        .tag-shopping {
+            background-color: var(--tag-shopping);
+            color: var(--tag-shopping-text);
+        }
+        .tag-logistica {
+            background-color: var(--tag-logistica);
+            color: var(--tag-logistica-text);
+        }
+        /* Células Mescladas do Portfólio */
         td[rowspan] {
             background-color: #ffffff;
             font-weight: 500;
             vertical-align: middle;
-            border-bottom: 2px solid #bdc3c7;
+            border-bottom: 2px solid #ddd;
+        }
+        tr:hover td:not([rowspan]) {
+            background-color: #f9f9f9;
+        }
+
+        /* Setas para rolagem */
+        .down-arrow {
+            text-align: center;
+            color: #aaa;
+            margin: 10px 0;
+            font-size: 1.2em;
+        }
+
+        /* Esconder tudo no início */
+        #mainDashboardArea {
+            display: none;
         }
     </style>
 </head>
 <body>
 
-    <h1>Dashboard de Mapeamento de Transações</h1>
-    
-    <div class="controls">
-        <div class="btn-group">
-            <button onclick="renderTable('shopping')">Visualizar Shoppings</button>
-            <button onclick="renderTable('logistica')">Visualizar Galpões Logísticos</button>
+    <div class="dashboard-wrapper">
+        <!-- Cabeçalho -->
+        <div class="header">
+            <div class="header-titles">
+                <h1>Transações de Real Estate</h1>
+                <p>Shoppings & Galpões Logísticos</p>
+            </div>
+            <div class="import-controls">
+                <div class="file-input-wrapper">
+                    <button class="import-btn"><i class="fas fa-file-upload"></i> Importar Excel</button>
+                    <input type="file" id="csvFileInput" accept=".csv" onchange="processFile()">
+                </div>
+            </div>
         </div>
-        
-        <div class="file-upload">
-            <label><strong>Atualizar Base via CSV:</strong></label>
-            <select id="tipoAtivo">
-                <option value="shopping">Shoppings</option>
-                <option value="logistica">Galpões Logísticos</option>
-            </select>
-            <input type="file" id="csvFileInput" accept=".csv">
-            <button class="upload-btn" onclick="processFile()">Carregar Base</button>
-        </div>
-    </div>
 
-    <div class="table-wrapper" id="tableContainer">
-        <div style="padding: 20px; color: #7f8c8d;">
-            Nenhum dado carregado. Utilize o painel acima para fazer o upload dos arquivos CSV gerados a partir do seu Excel.
+        <!-- Área principal do Dashboard (escondida até o upload) -->
+        <div id="mainDashboardArea">
+            <!-- KPIs -->
+            <div class="kpi-row">
+                <div class="kpi-card">
+                    <div class="kpi-title">Ativos</div>
+                    <div class="kpi-value" id="kpi-ativos">0</div>
+                    <div class="kpi-subtitle">transações</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-title">Volume total</div>
+                    <div class="kpi-value" id="kpi-volume">R$ 0</div>
+                    <div class="kpi-subtitle" id="kpi-volume-sub">0 com valor</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-title">Cap rate médio</div>
+                    <div class="kpi-value" id="kpi-cap">0%</div>
+                    <div class="kpi-subtitle" id="kpi-cap-sub">0 ativos</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-title">Valor/m² médio</div>
+                    <div class="kpi-value" id="kpi-valorm2">R$ 0</div>
+                    <div class="kpi-subtitle">por m²</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-title">ABL total</div>
+                    <div class="kpi-value" id="kpi-abl">0 mil</div>
+                    <div class="kpi-subtitle">m²</div>
+                </div>
+            </div>
+
+            <div class="down-arrow"><i class="fas fa-chevron-down"></i></div>
+
+            <!-- Gráficos Row 1 -->
+            <div class="charts-section">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <div class="chart-title">Cap rate por ativo</div>
+                        <div class="chart-legend">
+                            <div class="legend-color" style="background-color: var(--primary-blue)"></div>
+                            <span>Cap rate (%)</span>
+                        </div>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="chartCapRate"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <div class="chart-title">Valor de transação (R$ mi)</div>
+                        <div class="chart-legend">
+                            <div class="legend-color" style="background-color: var(--secondary-green)"></div>
+                            <span>R$ milhões</span>
+                        </div>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="chartValorTransacao"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="down-arrow"><i class="fas fa-chevron-down"></i></div>
+
+            <!-- Gráficos Row 2 + Filtros -->
+            <div class="charts-section">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <div class="chart-title">Distribuição por estrutura</div>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="chartEstrutura"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <div class="chart-title">Valor/m² médio por comprador</div>
+                        <div class="chart-legend">
+                            <div class="legend-color" style="background-color: var(--accent-orange)"></div>
+                            <span>R$/m² médio</span>
+                        </div>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="chartValorM2Comprador"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="down-arrow"><i class="fas fa-chevron-down"></i></div>
+
+            <!-- Filtros e Tabela -->
+            <div class="filters-card">
+                <div class="search-wrapper">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="filterSearch" placeholder="Buscar ativo..." onkeyup="filterDataAndRender()">
+                </div>
+                <div class="dropdown-wrapper">
+                    <i class="fas fa-filter filter-icon"></i>
+                    <select id="filterTipo" onchange="filterDataAndRender()"><option value="">Todos os tipos</option></select>
+                    <select id="filterComprador" onchange="filterDataAndRender()"><option value="">Todos os compradores</option></select>
+                    <select id="filterVendedor" onchange="filterDataAndRender()"><option value="">Todos os vendedores</option></select>
+                    <select id="filterEstrutura" onchange="filterDataAndRender()"><option value="">Todas as estruturas</option></select>
+                </div>
+            </div>
+
+            <div class="table-card" id="tableContainer"></div>
+        </div>
+
+        <!-- Tela inicial -->
+        <div id="initialUploadArea" style="text-align: center; padding: 100px 0;">
+            <i class="fas fa-file-excel" style="font-size: 4em; color: #ccc; margin-bottom: 20px;"></i>
+            <h2>Bem-vindo</h2>
+            <p>Por favor, clique em 'Importar Excel' acima e selecione o arquivo CSV<br>da sua base de transações de real estate para começar.</p>
         </div>
     </div>
 
     <script>
-        // Armazena os dados em memória
-        let baseDeDados = {
-            logistica: [],
-            shopping: []
-        };
+        // Variáveis de estado global
+        let dataLogistics = [];
+        let dataShopping = [];
+        let dataCombined = [];
+        let dataFiltered = [];
+        let charts = {}; // Para armazenar as instâncias dos gráficos
 
-        // Função para ler e processar o arquivo CSV
+        // Configuração dos gráficos
+        Chart.defaults.font.family = "'Segoe UI', 'Helvetica', 'Arial', sans-serif";
+        Chart.defaults.color = "#666";
+
+        // Mapeamento de colunas que devem ser mescladas se forem iguais (agrupamento de portfólio)
+        const colunasParaAgrupar = ['Data', 'Valor Transação (R$ mi)', 'Cap rate', 'Fundo / Comprador', 'Vendedor', 'Estrutura', 'Fonte'];
+
         function processFile() {
             const fileInput = document.getElementById('csvFileInput');
-            const tipo = document.getElementById('tipoAtivo').value;
-
-            if (!fileInput.files.length) {
-                alert('Por favor, selecione um arquivo CSV correspondente à base exportada do Excel.');
-                return;
-            }
+            if (!fileInput.files.length) return;
 
             Papa.parse(fileInput.files[0], {
                 header: true,
                 skipEmptyLines: true,
                 complete: function(results) {
-                    baseDeDados[tipo] = results.data;
-                    renderTable(tipo);
+                    fileInput.value = ''; // Limpa para permitir re-upload
                     
-                    // Limpa o input file
-                    fileInput.value = '';
+                    if (results.data.length === 0) {
+                        alert('Arquivo CSV vazio ou sem dados válidos.');
+                        return;
+                    }
+
+                    // Limpa e processa os dados combinados
+                    dataCombined = results.data.map(row => {
+                        // Faz a limpeza/conversão de dados numéricos para cálculos
+                        const cleanedData = {...row};
+                        cleanedData._numeric = {
+                            capRate: parseFloat(row['Cap rate']?.replace(',', '.')) || null,
+                            valor: parseFloat(row['Valor Transação (R$ mi)']?.replace(',', '.')) || null,
+                            abl: parseFloat(row['ABL Total']?.replace(',', '.').replace(' mil', '').replace(' m2', '')) || null,
+                            valorM2: parseFloat(row['Valor/m2']?.replace(',', '.')) || null
+                        };
+                        return cleanedData;
+                    });
+
+                    document.getElementById('initialUploadArea').style.display = 'none';
+                    document.getElementById('mainDashboardArea').style.display = 'block';
+
+                    populateFilters();
+                    filterDataAndRender(); // Filtra (tudo inicialmente) e renderiza tudo
                 },
                 error: function(err) {
                     alert('Erro ao ler o arquivo: ' + err.message);
@@ -162,74 +461,228 @@
             });
         }
 
-        // Função para desenhar a tabela, identificando e mesclando os portfólios
-        function renderTable(tipo) {
-            const container = document.getElementById('tableContainer');
-            const data = baseDeDados[tipo];
+        function populateFilters() {
+            const uniqueValues = (key) => [...new Set(dataCombined.map(item => item[key]).filter(Boolean))].sort();
+            
+            const fillDropdown = (id, key) => {
+                const select = document.getElementById(id);
+                // Reseta, mantendo a primeira opção padrão
+                select.innerHTML = select.options[0].outerHTML; 
+                uniqueValues(key).forEach(value => {
+                    const option = document.createElement('option');
+                    option.value = value;
+                    option.text = value;
+                    select.add(option);
+                });
+            };
 
-            if (!data || data.length === 0) {
-                container.innerHTML = `<div style="padding: 20px; color: #e74c3c;">A base de <b>${tipo}</b> está vazia. Faça o upload do arquivo CSV primeiro.</div>`;
+            fillDropdown('filterTipo', 'Tipo');
+            fillDropdown('filterComprador', 'Fundo / Comprador');
+            fillDropdown('filterVendedor', 'Vendedor');
+            fillDropdown('filterEstrutura', 'Estrutura');
+        }
+
+        function filterDataAndRender() {
+            const searchText = document.getElementById('filterSearch').value.toLowerCase();
+            const filterTipo = document.getElementById('filterTipo').value;
+            const filterComprador = document.getElementById('filterComprador').value;
+            const filterVendedor = document.getElementById('filterVendedor').value;
+            const filterEstrutura = document.getElementById('filterEstrutura').value;
+
+            dataFiltered = dataCombined.filter(item => {
+                const matchSearch = item['Ativo']?.toLowerCase().includes(searchText) || item['Tipo']?.toLowerCase().includes(searchText);
+                const matchTipo = !filterTipo || item['Tipo'] === filterTipo;
+                const matchComprador = !filterComprador || item['Fundo / Comprador'] === filterComprador;
+                const matchVendedor = !filterVendedor || item['Vendedor'] === filterVendedor;
+                const matchEstrutura = !filterEstrutura || item['Estrutura'] === filterEstrutura;
+                return matchSearch && matchTipo && matchComprador && matchVendedor && matchEstrutura;
+            });
+
+            // Atualiza tudo com os dados filtrados
+            updateKPIs();
+            renderCharts();
+            renderTable();
+        }
+
+        function formatCurrency(value, decimal = 2, unit = 'mi') {
+            if (value === null || value === 0) return 'R$ 0';
+            let formatted = value.toLocaleString('pt-BR', { minimumFractionDigits: decimal, maximumFractionDigits: decimal });
+            if (unit === 'bi') {
+                return `R$ ${(value / 1000).toFixed(2).replace('.', ',')} bi`;
+            }
+            return `R$ ${formatted} ${unit}`;
+        }
+
+        function updateKPIs() {
+            const validCapRates = dataFiltered.map(i => i._numeric.capRate).filter(i => i !== null);
+            const validValues = dataFiltered.map(i => i._numeric.valor).filter(i => i !== null);
+            const validABLs = dataFiltered.map(i => i._numeric.abl).filter(i => i !== null);
+            const validValorM2 = dataFiltered.map(i => i._numeric.valorM2).filter(i => i !== null);
+
+            const totalVolume = validValues.reduce((sum, v) => sum + v, 0);
+            const capMedio = validCapRates.length > 0 ? (validCapRates.reduce((sum, v) => sum + v, 0) / validCapRates.length) : 0;
+            const avgValorM2 = validValorM2.length > 0 ? (validValorM2.reduce((sum, v) => sum + v, 0) / validValorM2.length) : 0;
+            const totalABL = validABLs.reduce((sum, v) => sum + v, 0);
+
+            // Determina a unidade do volume (R$ mi ou R$ bi)
+            const volumeUnit = totalVolume > 1000 ? 'bi' : 'mi';
+
+            document.getElementById('kpi-ativos').textContent = dataFiltered.length;
+            document.getElementById('kpi-volume').textContent = formatCurrency(totalVolume, 2, volumeUnit);
+            document.getElementById('kpi-volume-sub').textContent = `${validValues.length} com valor`;
+            document.getElementById('kpi-cap').textContent = `${capMedio.toFixed(1).replace('.', ',')}%`;
+            document.getElementById('kpi-cap-sub').textContent = `${validCapRates.length} ativos`;
+            document.getElementById('kpi-valorm2').textContent = `R$ ${avgValorM2.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
+            document.getElementById('kpi-abl').textContent = `${totalABL.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} mil`;
+        }
+
+        // Função genérica para criar/atualizar gráficos de barra horizontal
+        function updateBarChart(id, labels, data, color, yAxisLabel, isSorted = true) {
+            let chartData = labels.map((label, index) => ({ label, value: data[index] }));
+            if (isSorted) chartData.sort((a, b) => b.value - a.value); // Ordena decrescente
+
+            const finalLabels = chartData.map(d => d.label);
+            const finalValues = chartData.map(d => d.value);
+
+            if (charts[id]) charts[id].destroy(); // Destrói gráfico anterior se houver
+
+            charts[id] = new Chart(document.getElementById(id), {
+                type: 'bar',
+                data: {
+                    labels: finalLabels,
+                    datasets: [{
+                        data: finalValues,
+                        backgroundColor: color,
+                        borderRadius: 6,
+                        barThickness: 15,
+                    }]
+                },
+                options: {
+                    indexAxis: 'y', // Barra horizontal
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { beginAtZero: true, grid: { color: '#f0f0f0' }, title: { display: !!yAxisLabel, text: yAxisLabel } },
+                        y: { grid: { display: false }, ticks: { color: '#333' } }
+                    }
+                }
+            });
+        }
+
+        function renderCharts() {
+            // 1. Cap rate por ativo (Limitado a top 15 para não poluir)
+            const capRateData = dataFiltered.filter(i => i._numeric.capRate !== null).slice(0, 15);
+            updateBarChart('chartCapRate', capRateData.map(i => i.Ativo), capRateData.map(i => i._numeric.capRate), getComputedStyle(document.documentElement).getPropertyValue('--primary-blue'), '%');
+
+            // 2. Valor de transação por ativo (Limitado a top 10)
+            const valorTransacaoData = dataFiltered.filter(i => i._numeric.valor !== null).slice(0, 10);
+            updateBarChart('chartValorTransacao', valorTransacaoData.map(i => i.Ativo), valorTransacaoData.map(i => i._numeric.valor), getComputedStyle(document.documentElement).getPropertyValue('--secondary-green'), 'R$ milhões');
+
+            // 3. Distribuição por estrutura (Gráfico de rosca)
+            const estruturaCounts = {};
+            dataFiltered.forEach(item => { if (item.Estrutura) estruturaCounts[item.Estrutura] = (estruturaCounts[item.Estrutura] || 0) + 1; });
+            const estruturaLabels = Object.keys(estruturaCounts).map(key => `${key} (${estruturaCounts[key]})`);
+            const estruturaValues = Object.values(estruturaCounts);
+
+            if (charts['chartEstrutura']) charts['chartEstrutura'].destroy();
+            charts['chartEstrutura'] = new Chart(document.getElementById('chartEstrutura'), {
+                type: 'doughnut',
+                data: {
+                    labels: estruturaLabels,
+                    datasets: [{
+                        data: estruturaValues,
+                        backgroundColor: ['#4a90e2', '#7ac142', '#d17e2c', '#d9534f', '#5bc0de'],
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'right', align: 'center', labels: { padding: 15, boxWidth: 15 } } },
+                    cutout: '70%'
+                }
+            });
+
+            // 4. Valor/m² médio por comprador (Top 10)
+            // Agrupa e calcula a média por comprador
+            const valorM2ByComprador = {};
+            dataFiltered.filter(i => i._numeric.valorM2 !== null && i['Fundo / Comprador']).forEach(item => {
+                const comprador = item['Fundo / Comprador'];
+                if (!valorM2ByComprador[comprador]) valorM2ByComprador[comprador] = { total: 0, count: 0 };
+                valorM2ByComprador[comprador].total += item._numeric.valorM2;
+                valorM2ByComprador[comprador].count++;
+            });
+            const compradorLabels = Object.keys(valorM2ByComprador);
+            const compradorM2Avgs = compradorLabels.map(label => valorM2ByComprador[label].total / valorM2ByComprador[label].count);
+            updateBarChart('chartValorM2Comprador', compradorLabels.slice(0, 10), compradorM2Avgs.slice(0, 10), getComputedStyle(document.documentElement).getPropertyValue('--accent-orange'), 'R$/m² médio');
+        }
+
+        function renderTable() {
+            const container = document.getElementById('tableContainer');
+            if (dataFiltered.length === 0) {
+                container.innerHTML = '<div style="padding: 30px; color: #666; text-align: center;">Nenhuma transação encontrada com os filtros atuais.</div>';
                 return;
             }
 
-            // Estas são as colunas que definem se os ativos foram comprados em conjunto (mesma transação).
-            // O algoritmo vai mesclar (rowspan) essas colunas se os valores forem idênticos nas linhas adjacentes.
-            const colunasParaMesclar = ['Data', 'Valor Transação (R$)', 'Cap rate', 'Comprador', 'Vendedor', 'Estrutura', 'Fato Relevante / Fonte'];
-            
-            // Pega os cabeçalhos reais baseados no arquivo subido, ignorando colunas completamente vazias geradas pelo Excel
-            const headers = Object.keys(data[0]).filter(h => h.trim() !== '' && !h.startsWith('__parsed_extra'));
+            // Define os cabeçalhos das colunas visíveis
+            const headers = ['Ativo', 'Tipo', 'Data', '%', 'ABL Total', 'Valor Transação', 'Valor/m2', 'Cap Ra'];
 
             let html = `<table><thead><tr>`;
             headers.forEach(h => html += `<th>${h}</th>`);
             html += `</tr></thead><tbody>`;
 
             let i = 0;
-            while (i < data.length) {
-                let row = data[i];
+            // Algoritmo de agrupamento (mesclar células do portfólio)
+            while (i < dataFiltered.length) {
+                let row = dataFiltered[i];
                 let rowspan = 1;
 
-                // Loop para checar as próximas linhas e ver se pertencem ao mesmo "pacote" de transação
-                for (let j = i + 1; j < data.length; j++) {
-                    let isSameTransaction = true;
-                    for (let col of colunasParaMesclar) {
-                        // Verifica se a coluna existe e se os dados batem
-                        if (headers.includes(col) && data[j][col] !== row[col]) {
-                            isSameTransaction = false;
-                            break;
-                        }
+                // Verifica as próximas linhas e compara as colunas de agrupamento
+                for (let j = i + 1; j < dataFiltered.length; j++) {
+                    let isSamePortfolio = true;
+                    // O portfólio é considerado o mesmo se Data, Valor e Comprador/Vendedor forem iguais
+                    if (dataFiltered[j]['Data'] !== row['Data'] || dataFiltered[j]['Valor Transação (R$ mi)'] !== row['Valor Transação (R$ mi)'] || dataFiltered[j]['Fundo / Comprador'] !== row['Fundo / Comprador']) {
+                        isSamePortfolio = false;
                     }
-                    
-                    // Além disso, para evitar falsos positivos se tudo estiver em branco, garantimos que há uma Data e Valor validos
-                    if (isSameTransaction && row['Data'] && row['Valor Transação (R$)']) {
-                        rowspan++;
-                    } else {
-                        break;
-                    }
+                    if (isSamePortfolio) rowspan++; else break;
                 }
 
                 // Renderiza a PRIMEIRA linha do grupo (incluindo as TDs com rowspan)
                 html += '<tr>';
+                // Define quais colunas serão mescladas (Data, %, Valor, Cap Ra nas imagens originais)
+                const mergedColsMapping = {'Data': 'Data', '%': '%', 'ABL Total': 'ABL Total', 'Valor Transação': 'Valor Transação (R$ mi)', 'Cap Ra': 'Cap rate'};
+                
                 headers.forEach(h => {
-                    if (colunasParaMesclar.includes(h)) {
-                        html += `<td rowspan="${rowspan}">${row[h] || '-'}</td>`;
+                    if (mergedColsMapping[h]) {
+                        html += `<td rowspan="${rowspan}">${row[mergedColsMapping[h]] || '-'}</td>`;
+                    } else if (h === 'Tipo') {
+                        const tagClass = row['Tipo'] === 'Shopping' ? 'tag-shopping' : (row['Tipo'] === 'Galpão Logístico' ? 'tag-logistica' : '');
+                        html += `<td><span class="type-tag ${tagClass}">${row['Tipo'] || '-'}</span></td>`;
                     } else {
                         html += `<td>${row[h] || '-'}</td>`;
                     }
                 });
                 html += '</tr>';
 
-                // Renderiza o RESTANTE das linhas do grupo (ocultando as TDs que já foram mescladas)
+                // Renderiza as TDs restantes que NÃO foram mescladas
                 for (let k = i + 1; k < i + rowspan; k++) {
                     html += '<tr>';
                     headers.forEach(h => {
-                        if (!colunasParaMesclar.includes(h)) {
-                            html += `<td>${data[k][h] || '-'}</td>`;
+                        // Se não estiver mapeada para mesclar, insere a TD
+                        if (!mergedColsMapping[h]) {
+                            if (h === 'Tipo') {
+                                const tagClass = dataFiltered[k]['Tipo'] === 'Shopping' ? 'tag-shopping' : (dataFiltered[k]['Tipo'] === 'Galpão Logístico' ? 'tag-logistica' : '');
+                                html += `<td><span class="type-tag ${tagClass}">${dataFiltered[k]['Tipo'] || '-'}</span></td>`;
+                            } else {
+                                html += `<td>${dataFiltered[k][h] || '-'}</td>`;
+                            }
                         }
                     });
                     html += '</tr>';
                 }
-
-                i += rowspan; // Avança o índice pulando os itens já mesclados
+                i += rowspan; // Avança o índice pulando os itens já agrupados
             }
 
             html += `</tbody></table>`;
