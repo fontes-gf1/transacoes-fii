@@ -1,22 +1,4 @@
-bash
 
-python3 << 'PYEOF'
-import json
-
-with open('/home/claude/shopping_clean.json', 'r', encoding='utf-8') as f:
-    shopping = json.load(f)
-with open('/home/claude/logistica_clean.json', 'r', encoding='utf-8') as f:
-    logistica = json.load(f)
-
-# Trim empty trailing columns from shopping
-for row in shopping:
-    while len(row) > 13 and row[-1]['v'] is None and row[-1]['rs'] == 1 and row[-1]['cs'] == 1 and not row[-1]['skip']:
-        row.pop()
-
-shopping_json = json.dumps(shopping, ensure_ascii=False, separators=(',',':'))
-logistica_json = json.dumps(logistica, ensure_ascii=False, separators=(',',':'))
-
-html = r"""<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
