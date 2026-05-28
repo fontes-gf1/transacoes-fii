@@ -408,18 +408,13 @@
 
     <script>
         // Variáveis de estado global
-        let dataLogistics = [];
-        let dataShopping = [];
         let dataCombined = [];
         let dataFiltered = [];
-        let charts = {}; // Para armazenar as instâncias dos gráficos
+        let charts = {}; 
 
         // Configuração dos gráficos
         Chart.defaults.font.family = "'Segoe UI', 'Helvetica', 'Arial', sans-serif";
         Chart.defaults.color = "#666";
-
-        // Mapeamento de colunas que devem ser mescladas se forem iguais (agrupamento de portfólio)
-        const colunasParaAgrupar = ['Data', 'Valor Transação (R$ mi)', 'Cap rate', 'Fundo / Comprador', 'Vendedor', 'Estrutura', 'Fonte'];
 
         function processFile() {
             const fileInput = document.getElementById('csvFileInput');
@@ -429,22 +424,46 @@
                 header: true,
                 skipEmptyLines: true,
                 complete: function(results) {
-                    fileInput.value = ''; // Limpa para permitir re-upload
+                    fileInput.value = ''; 
                     
                     if (results.data.length === 0) {
                         alert('Arquivo CSV vazio ou sem dados válidos.');
                         return;
                     }
 
-                    // Limpa e processa os dados combinados
                     dataCombined = results.data.map(row => {
-                        // Faz a limpeza/conversão de dados numéricos para cálculos
+                        // Função inteligente para entender o formato numérico do Brasil no Excel
+                        const parseNumber = (val) => {
+                            if (!val || val.trim() === '-' || val.trim() === '') return null;
+                            let str = val.toString().replace('R$', '').replace('%', '').trim();
+                            // Corrige 1.234,56 para 1234.56
+                            if (str.includes('.') && str.includes(',')) {
+                                str = str.replace(/\./g, '').replace(',', '.'); 
+                            } else if (str.includes(',')) {
+                                str = str.replace(',', '.'); 
+                            }
+                            const num = parseFloat(str);
+                            return isNaN(num) ? null : num;
+                        };
+
                         const cleanedData = {...row};
+                        
+                        // Busca pelas colunas reais (cobre as diferenças de Shop para Logística)
+                        const valorRaw = row['Valor Transação (R$)'];
+                        const m2Raw = row['Valor/m²'] || row['R$/m²'];
+                        
+                        // Converte o valor financeiro cheio (ex: 54000000) para milhões (54)
+                        let numValorRaw = parseNumber(valorRaw);
+                        let valorMilhoes = null;
+                        if (numValorRaw !== null) {
+                            valorMilhoes = numValorRaw > 10000 ? (numValorRaw / 1000000) : numValorRaw; 
+                        }
+
                         cleanedData._numeric = {
-                            capRate: parseFloat(row['Cap rate']?.replace(',', '.')) || null,
-                            valor: parseFloat(row['Valor Transação (R$ mi)']?.replace(',', '.')) || null,
-                            abl: parseFloat(row['ABL Total']?.replace(',', '.').replace(' mil', '').replace(' m2', '')) || null,
-                            valorM2: parseFloat(row['Valor/m2']?.replace(',', '.')) || null
+                            capRate: parseNumber(row['Cap rate']),
+                            valor: valorMilhoes,
+                            abl: parseNumber(row['ABL Total']?.replace(' mil', '').replace(' m2', '')),
+                            valorM2: parseNumber(m2Raw)
                         };
                         return cleanedData;
                     });
@@ -453,7 +472,7 @@
                     document.getElementById('mainDashboardArea').style.display = 'block';
 
                     populateFilters();
-                    filterDataAndRender(); // Filtra (tudo inicialmente) e renderiza tudo
+                    filterDataAndRender(); 
                 },
                 error: function(err) {
                     alert('Erro ao ler o arquivo: ' + err.message);
@@ -466,7 +485,6 @@
             
             const fillDropdown = (id, key) => {
                 const select = document.getElementById(id);
-                // Reseta, mantendo a primeira opção padrão
                 select.innerHTML = select.options[0].outerHTML; 
                 uniqueValues(key).forEach(value => {
                     const option = document.createElement('option');
@@ -477,7 +495,7 @@
             };
 
             fillDropdown('filterTipo', 'Tipo');
-            fillDropdown('filterComprador', 'Fundo / Comprador');
+            fillDropdown('filterComprador', 'Comprador'); // Atualizado
             fillDropdown('filterVendedor', 'Vendedor');
             fillDropdown('filterEstrutura', 'Estrutura');
         }
@@ -492,13 +510,12 @@
             dataFiltered = dataCombined.filter(item => {
                 const matchSearch = item['Ativo']?.toLowerCase().includes(searchText) || item['Tipo']?.toLowerCase().includes(searchText);
                 const matchTipo = !filterTipo || item['Tipo'] === filterTipo;
-                const matchComprador = !filterComprador || item['Fundo / Comprador'] === filterComprador;
+                const matchComprador = !filterComprador || item['Comprador'] === filterComprador; // Atualizado
                 const matchVendedor = !filterVendedor || item['Vendedor'] === filterVendedor;
                 const matchEstrutura = !filterEstrutura || item['Estrutura'] === filterEstrutura;
                 return matchSearch && matchTipo && matchComprador && matchVendedor && matchEstrutura;
             });
 
-            // Atualiza tudo com os dados filtrados
             updateKPIs();
             renderCharts();
             renderTable();
@@ -524,8 +541,7 @@
             const avgValorM2 = validValorM2.length > 0 ? (validValorM2.reduce((sum, v) => sum + v, 0) / validValorM2.length) : 0;
             const totalABL = validABLs.reduce((sum, v) => sum + v, 0);
 
-            // Determina a unidade do volume (R$ mi ou R$ bi)
-            const volumeUnit = totalVolume > 1000 ? 'bi' : 'mi';
+            const volumeUnit = totalVolume >= 1000 ? 'bi' : 'mi';
 
             document.getElementById('kpi-ativos').textContent = dataFiltered.length;
             document.getElementById('kpi-volume').textContent = formatCurrency(totalVolume, 2, volumeUnit);
@@ -536,15 +552,14 @@
             document.getElementById('kpi-abl').textContent = `${totalABL.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} mil`;
         }
 
-        // Função genérica para criar/atualizar gráficos de barra horizontal
         function updateBarChart(id, labels, data, color, yAxisLabel, isSorted = true) {
             let chartData = labels.map((label, index) => ({ label, value: data[index] }));
-            if (isSorted) chartData.sort((a, b) => b.value - a.value); // Ordena decrescente
+            if (isSorted) chartData.sort((a, b) => b.value - a.value); 
 
             const finalLabels = chartData.map(d => d.label);
             const finalValues = chartData.map(d => d.value);
 
-            if (charts[id]) charts[id].destroy(); // Destrói gráfico anterior se houver
+            if (charts[id]) charts[id].destroy(); 
 
             charts[id] = new Chart(document.getElementById(id), {
                 type: 'bar',
@@ -558,7 +573,7 @@
                     }]
                 },
                 options: {
-                    indexAxis: 'y', // Barra horizontal
+                    indexAxis: 'y', 
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: { legend: { display: false } },
@@ -571,15 +586,12 @@
         }
 
         function renderCharts() {
-            // 1. Cap rate por ativo (Limitado a top 15 para não poluir)
             const capRateData = dataFiltered.filter(i => i._numeric.capRate !== null).slice(0, 15);
             updateBarChart('chartCapRate', capRateData.map(i => i.Ativo), capRateData.map(i => i._numeric.capRate), getComputedStyle(document.documentElement).getPropertyValue('--primary-blue'), '%');
 
-            // 2. Valor de transação por ativo (Limitado a top 10)
             const valorTransacaoData = dataFiltered.filter(i => i._numeric.valor !== null).slice(0, 10);
             updateBarChart('chartValorTransacao', valorTransacaoData.map(i => i.Ativo), valorTransacaoData.map(i => i._numeric.valor), getComputedStyle(document.documentElement).getPropertyValue('--secondary-green'), 'R$ milhões');
 
-            // 3. Distribuição por estrutura (Gráfico de rosca)
             const estruturaCounts = {};
             dataFiltered.forEach(item => { if (item.Estrutura) estruturaCounts[item.Estrutura] = (estruturaCounts[item.Estrutura] || 0) + 1; });
             const estruturaLabels = Object.keys(estruturaCounts).map(key => `${key} (${estruturaCounts[key]})`);
@@ -605,11 +617,10 @@
                 }
             });
 
-            // 4. Valor/m² médio por comprador (Top 10)
-            // Agrupa e calcula a média por comprador
             const valorM2ByComprador = {};
-            dataFiltered.filter(i => i._numeric.valorM2 !== null && i['Fundo / Comprador']).forEach(item => {
-                const comprador = item['Fundo / Comprador'];
+            // Atualizado: 'Comprador' em vez de 'Fundo / Comprador'
+            dataFiltered.filter(i => i._numeric.valorM2 !== null && i['Comprador']).forEach(item => {
+                const comprador = item['Comprador'];
                 if (!valorM2ByComprador[comprador]) valorM2ByComprador[comprador] = { total: 0, count: 0 };
                 valorM2ByComprador[comprador].total += item._numeric.valorM2;
                 valorM2ByComprador[comprador].count++;
@@ -622,67 +633,68 @@
         function renderTable() {
             const container = document.getElementById('tableContainer');
             if (dataFiltered.length === 0) {
-                container.innerHTML = '<div style="padding: 30px; color: #666; text-align: center;">Nenhuma transação encontrada com os filtros atuais.</div>';
+                container.innerHTML = '<div style="padding: 30px; color: #666; text-align: center;">Nenhuma transação encontrada.</div>';
                 return;
             }
 
-            // Define os cabeçalhos das colunas visíveis
-            const headers = ['Ativo', 'Tipo', 'Data', '%', 'ABL Total', 'Valor Transação', 'Valor/m2', 'Cap Ra'];
+            // Define os cabeçalhos visuais
+            const headers = ['Ativo', 'Tipo', 'Data', '%', 'ABL Total', 'Valor Transação', 'Valor/m²', 'Cap Rate'];
 
             let html = `<table><thead><tr>`;
             headers.forEach(h => html += `<th>${h}</th>`);
             html += `</tr></thead><tbody>`;
 
             let i = 0;
-            // Algoritmo de agrupamento (mesclar células do portfólio)
             while (i < dataFiltered.length) {
                 let row = dataFiltered[i];
                 let rowspan = 1;
 
-                // Verifica as próximas linhas e compara as colunas de agrupamento
                 for (let j = i + 1; j < dataFiltered.length; j++) {
                     let isSamePortfolio = true;
-                    // O portfólio é considerado o mesmo se Data, Valor e Comprador/Vendedor forem iguais
-                    if (dataFiltered[j]['Data'] !== row['Data'] || dataFiltered[j]['Valor Transação (R$ mi)'] !== row['Valor Transação (R$ mi)'] || dataFiltered[j]['Fundo / Comprador'] !== row['Fundo / Comprador']) {
+                    // Lógica corrigida para agrupar portfólios usando os cabeçalhos reais
+                    if (dataFiltered[j]['Data'] !== row['Data'] || 
+                        dataFiltered[j]['Valor Transação (R$)'] !== row['Valor Transação (R$)'] || 
+                        dataFiltered[j]['Comprador'] !== row['Comprador']) {
                         isSamePortfolio = false;
                     }
-                    if (isSamePortfolio) rowspan++; else break;
+                    if (isSamePortfolio && row['Data']) rowspan++; else break;
                 }
 
-                // Renderiza a PRIMEIRA linha do grupo (incluindo as TDs com rowspan)
-                html += '<tr>';
-                // Define quais colunas serão mescladas (Data, %, Valor, Cap Ra nas imagens originais)
-                const mergedColsMapping = {'Data': 'Data', '%': '%', 'ABL Total': 'ABL Total', 'Valor Transação': 'Valor Transação (R$ mi)', 'Cap Ra': 'Cap rate'};
-                
-                headers.forEach(h => {
+                // Chaves de ligação (Mapeamento visual da tabela => coluna real no CSV)
+                const mergedColsMapping = {
+                    'Data': 'Data', 
+                    '%': '%', 
+                    'ABL Total': 'ABL Total', 
+                    'Valor Transação': 'Valor Transação (R$)', 
+                    'Cap Rate': 'Cap rate'
+                };
+
+                const renderCell = (h, dataRow, isFirstLine = false) => {
                     if (mergedColsMapping[h]) {
-                        html += `<td rowspan="${rowspan}">${row[mergedColsMapping[h]] || '-'}</td>`;
+                        if (isFirstLine) return `<td rowspan="${rowspan}">${dataRow[mergedColsMapping[h]] || '-'}</td>`;
+                        return ''; // Esconde se for célula agrupada
                     } else if (h === 'Tipo') {
-                        const tagClass = row['Tipo'] === 'Shopping' ? 'tag-shopping' : (row['Tipo'] === 'Galpão Logístico' ? 'tag-logistica' : '');
-                        html += `<td><span class="type-tag ${tagClass}">${row['Tipo'] || '-'}</span></td>`;
+                        const tagClass = dataRow['Tipo'] === 'Shopping' ? 'tag-shopping' : (dataRow['Tipo'] === 'Galpão Logístico' ? 'tag-logistica' : '');
+                        return `<td><span class="type-tag ${tagClass}">${dataRow['Tipo'] || '-'}</span></td>`;
+                    } else if (h === 'Valor/m²') {
+                        // Tenta as duas colunas
+                        const valM2 = dataRow['Valor/m²'] || dataRow['R$/m²'] || '-';
+                        return `<td>${valM2}</td>`;
                     } else {
-                        html += `<td>${row[h] || '-'}</td>`;
+                        return `<td>${dataRow[h] || '-'}</td>`;
                     }
-                });
+                };
+
+                html += '<tr>';
+                headers.forEach(h => html += renderCell(h, row, true));
                 html += '</tr>';
 
-                // Renderiza as TDs restantes que NÃO foram mescladas
                 for (let k = i + 1; k < i + rowspan; k++) {
                     html += '<tr>';
-                    headers.forEach(h => {
-                        // Se não estiver mapeada para mesclar, insere a TD
-                        if (!mergedColsMapping[h]) {
-                            if (h === 'Tipo') {
-                                const tagClass = dataFiltered[k]['Tipo'] === 'Shopping' ? 'tag-shopping' : (dataFiltered[k]['Tipo'] === 'Galpão Logístico' ? 'tag-logistica' : '');
-                                html += `<td><span class="type-tag ${tagClass}">${dataFiltered[k]['Tipo'] || '-'}</span></td>`;
-                            } else {
-                                html += `<td>${dataFiltered[k][h] || '-'}</td>`;
-                            }
-                        }
-                    });
+                    headers.forEach(h => html += renderCell(h, dataFiltered[k], false));
                     html += '</tr>';
                 }
-                i += rowspan; // Avança o índice pulando os itens já agrupados
+                i += rowspan;
             }
 
             html += `</tbody></table>`;
