@@ -402,9 +402,11 @@
                     let lastShop = null; 
                     
                     parsedShop.forEach(r => { 
+                        // TRAVA DE SEGURANÇA: Ignora "linhas fantasmas" vazias do Excel
+                        if (!r['Ativo'] || r['Ativo'].toString().trim() === '') return;
+
                         r['Tipo'] = 'Shopping'; 
                         
-                        // NOVO GATILHO: Se o Valor da Transação estiver vazio, herda os dados da mesclagem de cima
                         const valorAtual = r['Valor Transação (R$)'];
                         if (!valorAtual || valorAtual.toString().trim() === '') {
                             if (lastShop) {
@@ -413,10 +415,10 @@
                                         r[col] = lastShop[col];
                                     }
                                 });
-                                r._portfolioId = lastShop._portfolioId; // Associa ao mesmo pacote
+                                r._portfolioId = lastShop._portfolioId; 
                             }
                         } else {
-                            r._portfolioId = Math.random().toString(36).substr(2, 9); // Cria ID única para a transação
+                            r._portfolioId = Math.random().toString(36).substr(2, 9); 
                             lastShop = r; 
                         }
                         
@@ -429,6 +431,9 @@
                     let lastLog = null;
                     
                     parsedLog.forEach(r => { 
+                        // TRAVA DE SEGURANÇA: Ignora "linhas fantasmas" vazias do Excel
+                        if (!r['Ativo'] || r['Ativo'].toString().trim() === '') return;
+
                         r['Tipo'] = 'Galpão Logístico'; 
                         
                         const valorAtual = r['Valor Transação (R$)'];
@@ -583,7 +588,6 @@
         }
 
         function updateKPIs() {
-            // Agrupa pelo portfólio ID para evitar somar duplicado no Volume Total
             const transacoesUnicasMap = new Map();
             dataFiltered.forEach(item => {
                 if (item._numeric.valor !== null && item._portfolioId) {
@@ -673,7 +677,6 @@
                 if (i._numeric.valor !== null && i._portfolioId) {
                     if (!chavesVistas.has(i._portfolioId)) {
                         chavesVistas.add(i._portfolioId);
-                        // Limpa o nome se o "Comprador" for nulo
                         const compName = (i.Comprador && i.Comprador !== '-') ? ` ${i.Comprador}` : '';
                         transacoesVisiveis.push({
                             label: `Portfólio${compName} (${i.Data})`,
@@ -765,8 +768,6 @@
                 let row = dataFiltered[i];
                 let rowspan = 1;
 
-                // Garante que só mescla as linhas visualmente se elas estiverem lado a lado na ordenação
-                // e pertencerem à mesma ID de portfólio.
                 for (let j = i + 1; j < dataFiltered.length; j++) {
                     if (dataFiltered[j]._portfolioId === row._portfolioId) {
                         rowspan++;
@@ -775,7 +776,6 @@
                     }
                 }
 
-                // CORREÇÃO CRUCIAL AQUI: Apenas o que é da transação central é mesclado
                 const mergedColsMapping = {
                     'Data': 'Data', 
                     'Valor Transação': 'Valor Transação (R$)', 
