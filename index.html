@@ -240,7 +240,7 @@
         <div class="header">
             <div class="header-titles">
                 <h1>Transações de Real Estate</h1>
-                <p>Shoppings & Galpões Logísticos</p>
+                <p>Mapeamento de Shoppings & Galpões Logísticos</p>
             </div>
         </div>
 
@@ -337,7 +337,7 @@
             <div class="filters-card">
                 <div class="search-wrapper">
                     <i class="fas fa-search"></i>
-                    <input type="text" id="filterSearch" placeholder="Buscar ativo..." onkeyup="filterDataAndRender()">
+                    <input type="text" id="filterSearch" placeholder="Buscar ativo, cidade ou estado..." onkeyup="filterDataAndRender()">
                 </div>
                 <div class="dropdown-wrapper">
                     <i class="fas fa-filter filter-icon"></i>
@@ -360,57 +360,76 @@
         Chart.defaults.font.family = "'Segoe UI', 'Helvetica', 'Arial', sans-serif";
         Chart.defaults.color = "#666";
 
-        // Baixa o arquivo automaticamente quando a página abre
-        window.onload = function() {
-            Papa.parse("base_transacoes.csv", {
-                download: true, // Avisa o código que é um arquivo externo
-                header: true,
-                skipEmptyLines: true,
-                complete: function(results) {
-                    if (results.data.length === 0) {
-                        document.getElementById('loadingState').innerHTML = '<h2>Erro: Arquivo base_transacoes.csv vazio ou não encontrado.</h2>';
-                        return;
+        // Nova função inteligente que baixa múltiplos arquivos simultaneamente
+        window.onload = async function() {
+            try {
+                // Tenta puxar os dois arquivos do GitHub
+                const [resShopping, resLogistica] = await Promise.all([
+                    fetch('base_shoppings.csv').catch(() => null),
+                    fetch('base_logistica.csv').catch(() => null)
+                ]);
+
+                let shopText = (resShopping && resShopping.ok) ? await resShopping.text() : '';
+                let logText = (resLogistica && resLogistica.ok) ? await resLogistica.text() : '';
+
+                if (!shopText && !logText) {
+                    document.getElementById('loadingState').innerHTML = '<h2>Erro: Nenhum arquivo encontrado. Faça o upload de "base_shoppings.csv" e/ou "base_logistica.csv" no GitHub.</h2>';
+                    return;
+                }
+
+                let rawData = [];
+
+                // Processa Shoppings
+                if (shopText) {
+                    let parsedShop = Papa.parse(shopText, { header: true, skipEmptyLines: true }).data;
+                    parsedShop.forEach(r => { r['Tipo'] = 'Shopping'; rawData.push(r); });
+                }
+
+                // Processa Galpões Logísticos
+                if (logText) {
+                    let parsedLog = Papa.parse(logText, { header: true, skipEmptyLines: true }).data;
+                    parsedLog.forEach(r => { r['Tipo'] = 'Galpão Logístico'; rawData.push(r); });
+                }
+
+                dataCombined = rawData.map(row => {
+                    const parseNumber = (val) => {
+                        if (!val || val.trim() === '-' || val.trim() === '') return null;
+                        let str = val.toString().replace('R$', '').replace('%', '').trim();
+                        str = str.replace(/\./g, ''); 
+                        str = str.replace(',', '.'); 
+                        const num = parseFloat(str);
+                        return isNaN(num) ? null : num;
+                    };
+
+                    const cleanedData = {...row};
+                    
+                    // Lida com as diferenças de nomes de coluna entre os arquivos
+                    const valorRaw = row['Valor Transação (R$)'];
+                    const m2Raw = row['Valor/m²'] || row['R$/m²']; // Pega o que existir
+                    
+                    let numValorRaw = parseNumber(valorRaw);
+                    let valorMilhoes = null;
+                    if (numValorRaw !== null) {
+                        valorMilhoes = numValorRaw > 10000 ? (numValorRaw / 1000000) : numValorRaw; 
                     }
 
-                    dataCombined = results.data.map(row => {
-                        const parseNumber = (val) => {
-                            if (!val || val.trim() === '-' || val.trim() === '') return null;
-                            let str = val.toString().replace('R$', '').replace('%', '').trim();
-                            str = str.replace(/\./g, ''); 
-                            str = str.replace(',', '.'); 
-                            const num = parseFloat(str);
-                            return isNaN(num) ? null : num;
-                        };
+                    cleanedData._numeric = {
+                        capRate: parseNumber(row['Cap rate']),
+                        valor: valorMilhoes,
+                        abl: parseNumber(row['ABL Total']?.replace(' mil', '').replace(' m2', '')),
+                        valorM2: parseNumber(m2Raw)
+                    };
+                    return cleanedData;
+                });
 
-                        const cleanedData = {...row};
-                        const valorRaw = row['Valor Transação (R$)'];
-                        const m2Raw = row['Valor/m²'] || row['R$/m²'];
-                        
-                        let numValorRaw = parseNumber(valorRaw);
-                        let valorMilhoes = null;
-                        if (numValorRaw !== null) {
-                            valorMilhoes = numValorRaw > 10000 ? (numValorRaw / 1000000) : numValorRaw; 
-                        }
+                document.getElementById('loadingState').style.display = 'none';
+                document.getElementById('mainDashboardArea').style.display = 'block';
 
-                        cleanedData._numeric = {
-                            capRate: parseNumber(row['Cap rate']),
-                            valor: valorMilhoes,
-                            abl: parseNumber(row['ABL Total']?.replace(' mil', '').replace(' m2', '')),
-                            valorM2: parseNumber(m2Raw)
-                        };
-                        return cleanedData;
-                    });
-
-                    document.getElementById('loadingState').style.display = 'none';
-                    document.getElementById('mainDashboardArea').style.display = 'block';
-
-                    populateFilters();
-                    filterDataAndRender(); 
-                },
-                error: function(err) {
-                    document.getElementById('loadingState').innerHTML = `<h2>Erro ao ler o arquivo: ${err.message}. Verifique se você subiu o arquivo base_transacoes.csv no GitHub.</h2>`;
-                }
-            });
+                populateFilters();
+                filterDataAndRender(); 
+            } catch (err) {
+                document.getElementById('loadingState').innerHTML = `<h2>Erro de carregamento: ${err.message}.</h2>`;
+            }
         };
 
         function populateFilters() {
@@ -441,11 +460,17 @@
             const filterEstrutura = document.getElementById('filterEstrutura').value;
 
             dataFiltered = dataCombined.filter(item => {
-                const matchSearch = item['Ativo']?.toLowerCase().includes(searchText) || item['Tipo']?.toLowerCase().includes(searchText);
+                const matchSearch = 
+                    item['Ativo']?.toLowerCase().includes(searchText) || 
+                    item['Tipo']?.toLowerCase().includes(searchText) ||
+                    item['Cidade']?.toLowerCase().includes(searchText) ||
+                    item['Estado']?.toLowerCase().includes(searchText);
+
                 const matchTipo = !filterTipo || item['Tipo'] === filterTipo;
                 const matchComprador = !filterComprador || item['Comprador'] === filterComprador; 
                 const matchVendedor = !filterVendedor || item['Vendedor'] === filterVendedor;
                 const matchEstrutura = !filterEstrutura || item['Estrutura'] === filterEstrutura;
+                
                 return matchSearch && matchTipo && matchComprador && matchVendedor && matchEstrutura;
             });
 
@@ -569,7 +594,8 @@
                 return;
             }
 
-            const headers = ['Ativo', 'Tipo', 'Data', '%', 'ABL Total', 'Valor Transação', 'Valor/m²', 'Cap Rate'];
+            // Nova coluna 'Local' adicionada aos cabeçalhos da tabela
+            const headers = ['Ativo', 'Tipo', 'Local', 'Data', '%', 'ABL Total', 'Valor Transação', 'Valor/m²', 'Cap Rate'];
 
             let html = `<table><thead><tr>`;
             headers.forEach(h => html += `<th>${h}</th>`);
@@ -605,6 +631,12 @@
                     } else if (h === 'Tipo') {
                         const tagClass = dataRow['Tipo'] === 'Shopping' ? 'tag-shopping' : (dataRow['Tipo'] === 'Galpão Logístico' ? 'tag-logistica' : '');
                         return `<td><span class="type-tag ${tagClass}">${dataRow['Tipo'] || '-'}</span></td>`;
+                    } else if (h === 'Local') {
+                        // Lógica para preencher o Local dependendo do tipo do ativo
+                        if (dataRow['Tipo'] === 'Galpão Logístico' && dataRow['Cidade']) {
+                            return `<td>${dataRow['Cidade']} - ${dataRow['Estado']}</td>`;
+                        }
+                        return `<td>-</td>`;
                     } else if (h === 'Valor/m²') {
                         const valM2 = dataRow['Valor/m²'] || dataRow['R$/m²'] || '-';
                         return `<td>${valM2}</td>`;
