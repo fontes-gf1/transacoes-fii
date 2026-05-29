@@ -395,27 +395,29 @@
                 }
 
                 let rawData = [];
-
-                // Lista de colunas que devem ser "copiadas para baixo" se estiverem mescladas no Excel
                 const colunasMescladas = ['Data', 'Valor Transação (R$)', 'Cap rate', 'Comprador', 'Vendedor', 'Estrutura'];
 
                 if (shopText) {
                     let parsedShop = Papa.parse(shopText, { header: true, skipEmptyLines: true }).data;
-                    let lastShop = null; // Memória da última transação principal
+                    let lastShop = null; 
                     
                     parsedShop.forEach(r => { 
                         r['Tipo'] = 'Shopping'; 
                         
-                        // LÓGICA DE PREENCHIMENTO INTELIGENTE
-                        if (!r['Data'] || r['Data'].toString().trim() === '') {
-                            // Se a data está vazia, herda os dados da transação acima (simulando a célula mesclada)
+                        // NOVO GATILHO: Se o Valor da Transação estiver vazio, herda os dados da mesclagem de cima
+                        const valorAtual = r['Valor Transação (R$)'];
+                        if (!valorAtual || valorAtual.toString().trim() === '') {
                             if (lastShop) {
                                 colunasMescladas.forEach(col => {
-                                    if (lastShop[col]) r[col] = lastShop[col];
+                                    if (!r[col] || r[col].toString().trim() === '') {
+                                        r[col] = lastShop[col];
+                                    }
                                 });
+                                r._portfolioId = lastShop._portfolioId; // Associa ao mesmo pacote
                             }
                         } else {
-                            lastShop = r; // Atualiza a memória se for uma transação nova
+                            r._portfolioId = Math.random().toString(36).substr(2, 9); // Cria ID única para a transação
+                            lastShop = r; 
                         }
                         
                         rawData.push(r); 
@@ -429,13 +431,18 @@
                     parsedLog.forEach(r => { 
                         r['Tipo'] = 'Galpão Logístico'; 
                         
-                        if (!r['Data'] || r['Data'].toString().trim() === '') {
+                        const valorAtual = r['Valor Transação (R$)'];
+                        if (!valorAtual || valorAtual.toString().trim() === '') {
                             if (lastLog) {
                                 colunasMescladas.forEach(col => {
-                                    if (lastLog[col]) r[col] = lastLog[col];
+                                    if (!r[col] || r[col].toString().trim() === '') {
+                                        r[col] = lastLog[col];
+                                    }
                                 });
+                                r._portfolioId = lastLog._portfolioId;
                             }
                         } else {
+                            r._portfolioId = Math.random().toString(36).substr(2, 9);
                             lastLog = r;
                         }
                         
@@ -576,15 +583,11 @@
         }
 
         function updateKPIs() {
-            // Para o KPI de Volume Total não somar o mesmo portfólio várias vezes, precisamos pegar valores únicos baseados no bloco da transação
+            // Agrupa pelo portfólio ID para evitar somar duplicado no Volume Total
             const transacoesUnicasMap = new Map();
             dataFiltered.forEach(item => {
-                if (item._numeric.valor !== null) {
-                    // Cria uma chave única para a transação: Data + Comprador + Valor
-                    const chave = `${item.Data}_${item.Comprador}_${item._numeric.valor}`;
-                    if (!transacoesUnicasMap.has(chave)) {
-                        transacoesUnicasMap.set(chave, item._numeric.valor);
-                    }
+                if (item._numeric.valor !== null && item._portfolioId) {
+                    transacoesUnicasMap.set(item._portfolioId, item._numeric.valor);
                 }
             });
             
@@ -603,7 +606,7 @@
 
             document.getElementById('kpi-ativos').textContent = dataFiltered.length;
             document.getElementById('kpi-volume').textContent = formatCurrency(totalVolume, 2, volumeUnit);
-            document.getElementById('kpi-volume-sub').textContent = `${transacoesUnicasMap.size} negociações`; // Mudança sutil para refletir pacotes
+            document.getElementById('kpi-volume-sub').textContent = `${transacoesUnicasMap.size} negociações`; 
             document.getElementById('kpi-cap').textContent = `${capMedio.toFixed(1).replace('.', ',')}%`;
             document.getElementById('kpi-cap-sub').textContent = `${validCapRates.length} ativos`;
             document.getElementById('kpi-valorm2').textContent = `R$ ${avgValorM2.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
@@ -663,17 +666,17 @@
                 false 
             );
 
-            // Para o gráfico de valores, agrupar ativos do mesmo portfólio para não repetir a mesma barra gigante 5 vezes
             const transacoesVisiveis = [];
             const chavesVistas = new Set();
             
             dataFiltered.forEach(i => {
-                if (i._numeric.valor !== null) {
-                    const chave = `${i.Data}_${i.Comprador}_${i._numeric.valor}`;
-                    if (!chavesVistas.has(chave)) {
-                        chavesVistas.add(chave);
+                if (i._numeric.valor !== null && i._portfolioId) {
+                    if (!chavesVistas.has(i._portfolioId)) {
+                        chavesVistas.add(i._portfolioId);
+                        // Limpa o nome se o "Comprador" for nulo
+                        const compName = (i.Comprador && i.Comprador !== '-') ? ` ${i.Comprador}` : '';
                         transacoesVisiveis.push({
-                            label: `Portfólio ${i.Comprador} (${i.Data})`,
+                            label: `Portfólio${compName} (${i.Data})`,
                             valor: i._numeric.valor
                         });
                     }
@@ -762,21 +765,19 @@
                 let row = dataFiltered[i];
                 let rowspan = 1;
 
-                // Como a ordenação pode mexer na posição, ele checa os próximos itens pra ver se pertencem ao mesmo pacote que caiu junto
+                // Garante que só mescla as linhas visualmente se elas estiverem lado a lado na ordenação
+                // e pertencerem à mesma ID de portfólio.
                 for (let j = i + 1; j < dataFiltered.length; j++) {
-                    let isSamePortfolio = true;
-                    if (dataFiltered[j]['Data'] !== row['Data'] || 
-                        dataFiltered[j]['Valor Transação (R$)'] !== row['Valor Transação (R$)'] || 
-                        dataFiltered[j]['Comprador'] !== row['Comprador']) {
-                        isSamePortfolio = false;
+                    if (dataFiltered[j]._portfolioId === row._portfolioId) {
+                        rowspan++;
+                    } else {
+                        break;
                     }
-                    if (isSamePortfolio && row['Data']) rowspan++; else break;
                 }
 
+                // CORREÇÃO CRUCIAL AQUI: Apenas o que é da transação central é mesclado
                 const mergedColsMapping = {
                     'Data': 'Data', 
-                    '%': '%', 
-                    'ABL Transação': 'ABL Transação', 
                     'Valor Transação': 'Valor Transação (R$)', 
                     'Cap Rate': 'Cap rate'
                 };
