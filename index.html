@@ -129,7 +129,7 @@
             box-shadow: var(--soft-shadow);
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 15px;
         }
         .search-wrapper {
             position: relative;
@@ -138,7 +138,7 @@
         }
         .filter-icon {
             color: #666;
-            margin-right: 10px;
+            margin-right: 8px;
         }
         .search-wrapper input {
             width: 100%;
@@ -152,10 +152,13 @@
             left: 12px;
             color: #ccc;
         }
+        
+        /* Modificado para suportar mais filtros flexivelmente */
         .dropdown-wrapper {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            display: flex;
+            flex-wrap: wrap;
             gap: 10px;
+            align-items: center;
         }
         .dropdown-wrapper select {
             padding: 10px;
@@ -164,10 +167,16 @@
             appearance: none;
             background-color: white;
             cursor: pointer;
+            flex: 1 1 140px; /* Adapta o tamanho dinamicamente */
         }
         .dropdown-wrapper select:focus {
             outline: none;
             border-color: #aaa;
+        }
+        .divider {
+            color: #ccc;
+            margin: 0 5px;
+            font-weight: bold;
         }
 
         .table-card {
@@ -272,7 +281,6 @@
                     <div class="kpi-subtitle">por m²</div>
                 </div>
                 <div class="kpi-card">
-                    <!-- Título ajustado para refletir a ABL transacionada -->
                     <div class="kpi-title">ABL transacionada</div>
                     <div class="kpi-value" id="kpi-abl">0 mil</div>
                     <div class="kpi-subtitle">m²</div>
@@ -342,10 +350,20 @@
                 </div>
                 <div class="dropdown-wrapper">
                     <i class="fas fa-filter filter-icon"></i>
+                    <select id="filterAno" onchange="filterDataAndRender()"><option value="">Todos os anos</option></select>
                     <select id="filterTipo" onchange="filterDataAndRender()"><option value="">Todos os tipos</option></select>
                     <select id="filterComprador" onchange="filterDataAndRender()"><option value="">Todos os compradores</option></select>
                     <select id="filterVendedor" onchange="filterDataAndRender()"><option value="">Todos os vendedores</option></select>
                     <select id="filterEstrutura" onchange="filterDataAndRender()"><option value="">Todas as estruturas</option></select>
+                    
+                    <span class="divider">|</span>
+                    <i class="fas fa-sort filter-icon"></i>
+                    <select id="sortOption" onchange="filterDataAndRender()">
+                        <option value="dataDesc">Mais recentes primeiro</option>
+                        <option value="dataAsc">Mais antigos primeiro</option>
+                        <option value="valorDesc">Maior transação primeiro</option>
+                        <option value="valorAsc">Menor transação primeiro</option>
+                    </select>
                 </div>
             </div>
 
@@ -400,8 +418,11 @@
                         return isNaN(num) ? null : num;
                     };
 
-                    const parseDate = (val) => {
-                        if (!val || val.trim() === '-') return 0;
+                    // Função atualizada para extrair tanto o timestamp quanto o Ano isolado
+                    const parseDateAndYear = (val) => {
+                        let ts = 0;
+                        let yr = '';
+                        if (!val || val.trim() === '-') return { ts, yr };
                         const parts = val.toString().toLowerCase().trim().split(/[\/\-]/);
                         if (parts.length >= 2) {
                             const mStr = parts[0].substring(0, 3);
@@ -409,28 +430,34 @@
                             if (month === undefined && !isNaN(parseInt(parts[0]))) month = parseInt(parts[0]) - 1; 
                             let year = parseInt(parts[1], 10);
                             if (year < 100) year += 2000;
-                            if (month !== undefined && !isNaN(year)) return new Date(year, month, 1).getTime();
+                            if (month !== undefined && !isNaN(year)) {
+                                ts = new Date(year, month, 1).getTime();
+                                yr = year.toString();
+                            }
                         }
-                        return 0;
+                        return { ts, yr };
                     };
 
                     const cleanedData = {...row};
                     const valorRaw = row['Valor Transação (R$)'];
                     const m2Raw = row['Valor/m²'] || row['R$/m²']; 
+                    const dateInfo = parseDateAndYear(row['Data']);
                     
                     let numValorRaw = parseNumber(valorRaw);
                     let valorMilhoes = null;
                     if (numValorRaw !== null) {
                         valorMilhoes = numValorRaw > 10000 ? (numValorRaw / 1000000) : numValorRaw; 
                     }
+                    
+                    // Adicionando a coluna 'Ano' de forma explícita para o filtro ler
+                    cleanedData['Ano'] = dateInfo.yr;
 
                     cleanedData._numeric = {
                         capRate: parseNumber(row['Cap rate']),
                         valor: valorMilhoes,
-                        // Correção: Agora lê a 'ABL Transação' em vez da 'ABL Total'
                         abl: parseNumber(row['ABL Transação']?.toString().replace(' mil', '').replace(' m2', '')),
                         valorM2: parseNumber(m2Raw),
-                        dateTs: parseDate(row['Data']) 
+                        dateTs: dateInfo.ts 
                     };
                     return cleanedData;
                 });
@@ -459,6 +486,7 @@
                 });
             };
 
+            fillDropdown('filterAno', 'Ano'); // Preenche os anos detectados
             fillDropdown('filterTipo', 'Tipo');
             fillDropdown('filterComprador', 'Comprador'); 
             fillDropdown('filterVendedor', 'Vendedor');
@@ -467,11 +495,14 @@
 
         function filterDataAndRender() {
             const searchText = document.getElementById('filterSearch').value.toLowerCase();
+            const filterAno = document.getElementById('filterAno').value;
             const filterTipo = document.getElementById('filterTipo').value;
             const filterComprador = document.getElementById('filterComprador').value;
             const filterVendedor = document.getElementById('filterVendedor').value;
             const filterEstrutura = document.getElementById('filterEstrutura').value;
+            const sortOption = document.getElementById('sortOption').value;
 
+            // 1. Aplica todos os filtros selecionados
             dataFiltered = dataCombined.filter(item => {
                 const matchSearch = 
                     item['Ativo']?.toLowerCase().includes(searchText) || 
@@ -479,12 +510,22 @@
                     item['Cidade']?.toLowerCase().includes(searchText) ||
                     item['Estado']?.toLowerCase().includes(searchText);
 
+                const matchAno = !filterAno || item['Ano'] === filterAno;
                 const matchTipo = !filterTipo || item['Tipo'] === filterTipo;
                 const matchComprador = !filterComprador || item['Comprador'] === filterComprador; 
                 const matchVendedor = !filterVendedor || item['Vendedor'] === filterVendedor;
                 const matchEstrutura = !filterEstrutura || item['Estrutura'] === filterEstrutura;
                 
-                return matchSearch && matchTipo && matchComprador && matchVendedor && matchEstrutura;
+                return matchSearch && matchAno && matchTipo && matchComprador && matchVendedor && matchEstrutura;
+            });
+
+            // 2. Aplica a ORDENAÇÃO GLOBAL baseada na escolha do usuário
+            dataFiltered.sort((a, b) => {
+                if (sortOption === 'dataDesc') return b._numeric.dateTs - a._numeric.dateTs;
+                if (sortOption === 'dataAsc') return a._numeric.dateTs - b._numeric.dateTs;
+                if (sortOption === 'valorDesc') return (b._numeric.valor || 0) - (a._numeric.valor || 0);
+                if (sortOption === 'valorAsc') return (a._numeric.valor || 0) - (b._numeric.valor || 0);
+                return 0;
             });
 
             updateKPIs();
@@ -521,7 +562,6 @@
             document.getElementById('kpi-cap-sub').textContent = `${validCapRates.length} ativos`;
             document.getElementById('kpi-valorm2').textContent = `R$ ${avgValorM2.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
             
-            // Correção: Lógica de formatação inteligente para a ABL
             let ablFormatted = '';
             if (totalABL >= 1000000) {
                 ablFormatted = `${(totalABL / 1000000).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} mi`;
@@ -567,19 +607,18 @@
         }
 
         function renderCharts() {
-            const recentData = [...dataFiltered].sort((a, b) => b._numeric.dateTs - a._numeric.dateTs);
-
-            const capRateData = recentData.filter(i => i._numeric.capRate !== null).slice(0, 15);
+            // Agora os gráficos respeitam a ordem definida no seletor global, limitando aos 10 ou 15 primeiros daquela ordem
+            const capRateData = dataFiltered.filter(i => i._numeric.capRate !== null).slice(0, 15);
             updateBarChart(
                 'chartCapRate', 
                 capRateData.map(i => `${i.Ativo} (${i.Data})`), 
                 capRateData.map(i => i._numeric.capRate), 
                 getComputedStyle(document.documentElement).getPropertyValue('--primary-blue'), 
                 '%', 
-                false 
+                false // False mantém a ordem do select global
             );
 
-            const valorTransacaoData = recentData.filter(i => i._numeric.valor !== null).slice(0, 10);
+            const valorTransacaoData = dataFiltered.filter(i => i._numeric.valor !== null).slice(0, 10);
             updateBarChart(
                 'chartValorTransacao', 
                 valorTransacaoData.map(i => `${i.Ativo} (${i.Data})`), 
@@ -614,27 +653,23 @@
                 }
             });
 
+            // Gráfico de Compradores: Ordenado pelo maior pagador médio (Ranking Real)
             const valorM2ByComprador = {};
             dataFiltered.filter(i => i._numeric.valorM2 !== null && i['Comprador'] && i['Comprador'] !== '-').forEach(item => {
                 const comp = item['Comprador'];
-                if (!valorM2ByComprador[comp]) valorM2ByComprador[comp] = { total: 0, count: 0, lastDate: 0 };
+                if (!valorM2ByComprador[comp]) valorM2ByComprador[comp] = { total: 0, count: 0 };
                 
                 valorM2ByComprador[comp].total += item._numeric.valorM2;
                 valorM2ByComprador[comp].count++;
-                
-                if (item._numeric.dateTs > valorM2ByComprador[comp].lastDate) {
-                    valorM2ByComprador[comp].lastDate = item._numeric.dateTs;
-                }
             });
 
             const compradorRanking = Object.keys(valorM2ByComprador).map(comp => {
                 return {
                     nome: comp,
-                    media: valorM2ByComprador[comp].total / valorM2ByComprador[comp].count,
-                    lastDate: valorM2ByComprador[comp].lastDate
+                    media: valorM2ByComprador[comp].total / valorM2ByComprador[comp].count
                 };
             })
-            .sort((a, b) => b.lastDate - a.lastDate) 
+            .sort((a, b) => b.media - a.media) // O gráfico de comprador é sempre um ranking de "Quem paga mais caro por m²"
             .slice(0, 10);
 
             updateBarChart(
@@ -654,7 +689,6 @@
                 return;
             }
 
-            // Correção: Mudei o cabeçalho de 'ABL Total' para 'ABL Transação' para casar com o KPI
             const headers = ['Ativo', 'Tipo', 'Local', 'Data', '%', 'ABL Transação', 'Valor Transação', 'Valor/m²', 'Cap Rate'];
 
             let html = `<table><thead><tr>`;
@@ -662,6 +696,7 @@
             html += `</tr></thead><tbody>`;
 
             let i = 0;
+            // Mesmo com a ordenação global ativada, esse algoritmo garante que transações vendidas no mesmo "pacote" (Portfólio) continuem com a célula visualmente mesclada, já que elas caem lado a lado na ordenação por terem a mesma data e valor.
             while (i < dataFiltered.length) {
                 let row = dataFiltered[i];
                 let rowspan = 1;
@@ -679,7 +714,7 @@
                 const mergedColsMapping = {
                     'Data': 'Data', 
                     '%': '%', 
-                    'ABL Transação': 'ABL Transação', // Mapeado para a coluna correta
+                    'ABL Transação': 'ABL Transação', 
                     'Valor Transação': 'Valor Transação (R$)', 
                     'Cap Rate': 'Cap rate'
                 };
