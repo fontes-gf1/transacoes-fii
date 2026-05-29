@@ -360,10 +360,8 @@
         Chart.defaults.font.family = "'Segoe UI', 'Helvetica', 'Arial', sans-serif";
         Chart.defaults.color = "#666";
 
-        // Nova função inteligente que baixa múltiplos arquivos simultaneamente
         window.onload = async function() {
             try {
-                // Tenta puxar os dois arquivos do GitHub
                 const [resShopping, resLogistica] = await Promise.all([
                     fetch('base_shoppings.csv').catch(() => null),
                     fetch('base_logistica.csv').catch(() => null)
@@ -379,17 +377,18 @@
 
                 let rawData = [];
 
-                // Processa Shoppings
                 if (shopText) {
                     let parsedShop = Papa.parse(shopText, { header: true, skipEmptyLines: true }).data;
                     parsedShop.forEach(r => { r['Tipo'] = 'Shopping'; rawData.push(r); });
                 }
 
-                // Processa Galpões Logísticos
                 if (logText) {
                     let parsedLog = Papa.parse(logText, { header: true, skipEmptyLines: true }).data;
                     parsedLog.forEach(r => { r['Tipo'] = 'Galpão Logístico'; rawData.push(r); });
                 }
+
+                // Dicionário para traduzir o mês em texto para número e criar a linha do tempo
+                const monthMap = { 'jan': 0, 'fev': 1, 'mar': 2, 'abr': 3, 'mai': 4, 'jun': 5, 'jul': 6, 'ago': 7, 'set': 8, 'out': 9, 'nov': 10, 'dez': 11 };
 
                 dataCombined = rawData.map(row => {
                     const parseNumber = (val) => {
@@ -401,11 +400,24 @@
                         return isNaN(num) ? null : num;
                     };
 
+                    // Função para ler a coluna Data (ex: "mai/19") e gerar um timestamp numérico para ordenação
+                    const parseDate = (val) => {
+                        if (!val || val.trim() === '-') return 0;
+                        const parts = val.toString().toLowerCase().trim().split(/[\/\-]/);
+                        if (parts.length >= 2) {
+                            const mStr = parts[0].substring(0, 3);
+                            let month = monthMap[mStr];
+                            if (month === undefined && !isNaN(parseInt(parts[0]))) month = parseInt(parts[0]) - 1; 
+                            let year = parseInt(parts[1], 10);
+                            if (year < 100) year += 2000;
+                            if (month !== undefined && !isNaN(year)) return new Date(year, month, 1).getTime();
+                        }
+                        return 0;
+                    };
+
                     const cleanedData = {...row};
-                    
-                    // Lida com as diferenças de nomes de coluna entre os arquivos
                     const valorRaw = row['Valor Transação (R$)'];
-                    const m2Raw = row['Valor/m²'] || row['R$/m²']; // Pega o que existir
+                    const m2Raw = row['Valor/m²'] || row['R$/m²']; 
                     
                     let numValorRaw = parseNumber(valorRaw);
                     let valorMilhoes = null;
@@ -417,7 +429,8 @@
                         capRate: parseNumber(row['Cap rate']),
                         valor: valorMilhoes,
                         abl: parseNumber(row['ABL Total']?.replace(' mil', '').replace(' m2', '')),
-                        valorM2: parseNumber(m2Raw)
+                        valorM2: parseNumber(m2Raw),
+                        dateTs: parseDate(row['Data']) // Armazena a data real em formato matemático
                     };
                     return cleanedData;
                 });
@@ -512,6 +525,7 @@
 
         function updateBarChart(id, labels, data, color, yAxisLabel, isSorted = true) {
             let chartData = labels.map((label, index) => ({ label, value: data[index] }));
+            // Se isSorted for true, ordena por valor. Se for false, mantém a ordem cronológica do array.
             if (isSorted) chartData.sort((a, b) => b.value - a.value); 
 
             const finalLabels = chartData.map(d => d.label);
@@ -544,12 +558,32 @@
         }
 
         function renderCharts() {
-            const capRateData = dataFiltered.filter(i => i._numeric.capRate !== null).slice(0, 15);
-            updateBarChart('chartCapRate', capRateData.map(i => i.Ativo), capRateData.map(i => i._numeric.capRate), getComputedStyle(document.documentElement).getPropertyValue('--primary-blue'), '%');
+            // Ordena toda a base da mais recente para a mais antiga (Descending)
+            const recentData = [...dataFiltered].sort((a, b) => b._numeric.dateTs - a._numeric.dateTs);
 
-            const valorTransacaoData = dataFiltered.filter(i => i._numeric.valor !== null).slice(0, 10);
-            updateBarChart('chartValorTransacao', valorTransacaoData.map(i => i.Ativo), valorTransacaoData.map(i => i._numeric.valor), getComputedStyle(document.documentElement).getPropertyValue('--secondary-green'), 'R$ milhões');
+            // 1. Cap rate (Top 15 mais recentes)
+            const capRateData = recentData.filter(i => i._numeric.capRate !== null).slice(0, 15);
+            updateBarChart(
+                'chartCapRate', 
+                capRateData.map(i => `${i.Ativo} (${i.Data})`), // Adiciona a data no rótulo
+                capRateData.map(i => i._numeric.capRate), 
+                getComputedStyle(document.documentElement).getPropertyValue('--primary-blue'), 
+                '%', 
+                false // false para não quebrar a ordem cronológica
+            );
 
+            // 2. Valor de Transação (Top 10 mais recentes)
+            const valorTransacaoData = recentData.filter(i => i._numeric.valor !== null).slice(0, 10);
+            updateBarChart(
+                'chartValorTransacao', 
+                valorTransacaoData.map(i => `${i.Ativo} (${i.Data})`), 
+                valorTransacaoData.map(i => i._numeric.valor), 
+                getComputedStyle(document.documentElement).getPropertyValue('--secondary-green'), 
+                'R$ milhões', 
+                false
+            );
+
+            // 3. Distribuição por estrutura (Mantém englobando toda a tela filtrada)
             const estruturaCounts = {};
             dataFiltered.forEach(item => { if (item.Estrutura) estruturaCounts[item.Estrutura] = (estruturaCounts[item.Estrutura] || 0) + 1; });
             const estruturaLabels = Object.keys(estruturaCounts).map(key => `${key} (${estruturaCounts[key]})`);
@@ -575,16 +609,39 @@
                 }
             });
 
+            // 4. Valor/m² médio por comprador (Mostra os 10 fundos com as movimentações mais recentes)
             const valorM2ByComprador = {};
-            dataFiltered.filter(i => i._numeric.valorM2 !== null && i['Comprador']).forEach(item => {
-                const comprador = item['Comprador'];
-                if (!valorM2ByComprador[comprador]) valorM2ByComprador[comprador] = { total: 0, count: 0 };
-                valorM2ByComprador[comprador].total += item._numeric.valorM2;
-                valorM2ByComprador[comprador].count++;
+            dataFiltered.filter(i => i._numeric.valorM2 !== null && i['Comprador'] && i['Comprador'] !== '-').forEach(item => {
+                const comp = item['Comprador'];
+                if (!valorM2ByComprador[comp]) valorM2ByComprador[comp] = { total: 0, count: 0, lastDate: 0 };
+                
+                valorM2ByComprador[comp].total += item._numeric.valorM2;
+                valorM2ByComprador[comp].count++;
+                
+                // Grava a data da transação mais recente feita por esse fundo
+                if (item._numeric.dateTs > valorM2ByComprador[comp].lastDate) {
+                    valorM2ByComprador[comp].lastDate = item._numeric.dateTs;
+                }
             });
-            const compradorLabels = Object.keys(valorM2ByComprador);
-            const compradorM2Avgs = compradorLabels.map(label => valorM2ByComprador[label].total / valorM2ByComprador[label].count);
-            updateBarChart('chartValorM2Comprador', compradorLabels.slice(0, 10), compradorM2Avgs.slice(0, 10), getComputedStyle(document.documentElement).getPropertyValue('--accent-orange'), 'R$/m² médio');
+
+            const compradorRanking = Object.keys(valorM2ByComprador).map(comp => {
+                return {
+                    nome: comp,
+                    media: valorM2ByComprador[comp].total / valorM2ByComprador[comp].count,
+                    lastDate: valorM2ByComprador[comp].lastDate
+                };
+            })
+            .sort((a, b) => b.lastDate - a.lastDate) // Ordena pelo comprador que atuou por último
+            .slice(0, 10);
+
+            updateBarChart(
+                'chartValorM2Comprador', 
+                compradorRanking.map(i => i.nome), 
+                compradorRanking.map(i => i.media), 
+                getComputedStyle(document.documentElement).getPropertyValue('--accent-orange'), 
+                'R$/m² médio', 
+                false
+            );
         }
 
         function renderTable() {
@@ -594,7 +651,6 @@
                 return;
             }
 
-            // Nova coluna 'Local' adicionada aos cabeçalhos da tabela
             const headers = ['Ativo', 'Tipo', 'Local', 'Data', '%', 'ABL Total', 'Valor Transação', 'Valor/m²', 'Cap Rate'];
 
             let html = `<table><thead><tr>`;
@@ -602,6 +658,7 @@
             html += `</tr></thead><tbody>`;
 
             let i = 0;
+            // A tabela continua mostrando os dados na ordem original para preservar o agrupamento de portfólios
             while (i < dataFiltered.length) {
                 let row = dataFiltered[i];
                 let rowspan = 1;
@@ -632,7 +689,6 @@
                         const tagClass = dataRow['Tipo'] === 'Shopping' ? 'tag-shopping' : (dataRow['Tipo'] === 'Galpão Logístico' ? 'tag-logistica' : '');
                         return `<td><span class="type-tag ${tagClass}">${dataRow['Tipo'] || '-'}</span></td>`;
                     } else if (h === 'Local') {
-                        // Lógica para preencher o Local dependendo do tipo do ativo
                         if (dataRow['Tipo'] === 'Galpão Logístico' && dataRow['Cidade']) {
                             return `<td>${dataRow['Cidade']} - ${dataRow['Estado']}</td>`;
                         }
