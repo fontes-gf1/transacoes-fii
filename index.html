@@ -396,14 +396,51 @@
 
                 let rawData = [];
 
+                // Lista de colunas que devem ser "copiadas para baixo" se estiverem mescladas no Excel
+                const colunasMescladas = ['Data', 'Valor Transação (R$)', 'Cap rate', 'Comprador', 'Vendedor', 'Estrutura'];
+
                 if (shopText) {
                     let parsedShop = Papa.parse(shopText, { header: true, skipEmptyLines: true }).data;
-                    parsedShop.forEach(r => { r['Tipo'] = 'Shopping'; rawData.push(r); });
+                    let lastShop = null; // Memória da última transação principal
+                    
+                    parsedShop.forEach(r => { 
+                        r['Tipo'] = 'Shopping'; 
+                        
+                        // LÓGICA DE PREENCHIMENTO INTELIGENTE
+                        if (!r['Data'] || r['Data'].toString().trim() === '') {
+                            // Se a data está vazia, herda os dados da transação acima (simulando a célula mesclada)
+                            if (lastShop) {
+                                colunasMescladas.forEach(col => {
+                                    if (lastShop[col]) r[col] = lastShop[col];
+                                });
+                            }
+                        } else {
+                            lastShop = r; // Atualiza a memória se for uma transação nova
+                        }
+                        
+                        rawData.push(r); 
+                    });
                 }
 
                 if (logText) {
                     let parsedLog = Papa.parse(logText, { header: true, skipEmptyLines: true }).data;
-                    parsedLog.forEach(r => { r['Tipo'] = 'Galpão Logístico'; rawData.push(r); });
+                    let lastLog = null;
+                    
+                    parsedLog.forEach(r => { 
+                        r['Tipo'] = 'Galpão Logístico'; 
+                        
+                        if (!r['Data'] || r['Data'].toString().trim() === '') {
+                            if (lastLog) {
+                                colunasMescladas.forEach(col => {
+                                    if (lastLog[col]) r[col] = lastLog[col];
+                                });
+                            }
+                        } else {
+                            lastLog = r;
+                        }
+                        
+                        rawData.push(r); 
+                    });
                 }
 
                 const monthMap = { 'jan': 0, 'fev': 1, 'mar': 2, 'abr': 3, 'mai': 4, 'jun': 5, 'jul': 6, 'ago': 7, 'set': 8, 'out': 9, 'nov': 10, 'dez': 11 };
@@ -418,7 +455,6 @@
                         return isNaN(num) ? null : num;
                     };
 
-                    // Função atualizada para extrair tanto o timestamp quanto o Ano isolado
                     const parseDateAndYear = (val) => {
                         let ts = 0;
                         let yr = '';
@@ -449,7 +485,6 @@
                         valorMilhoes = numValorRaw > 10000 ? (numValorRaw / 1000000) : numValorRaw; 
                     }
                     
-                    // Adicionando a coluna 'Ano' de forma explícita para o filtro ler
                     cleanedData['Ano'] = dateInfo.yr;
 
                     cleanedData._numeric = {
@@ -486,7 +521,7 @@
                 });
             };
 
-            fillDropdown('filterAno', 'Ano'); // Preenche os anos detectados
+            fillDropdown('filterAno', 'Ano'); 
             fillDropdown('filterTipo', 'Tipo');
             fillDropdown('filterComprador', 'Comprador'); 
             fillDropdown('filterVendedor', 'Vendedor');
@@ -502,7 +537,6 @@
             const filterEstrutura = document.getElementById('filterEstrutura').value;
             const sortOption = document.getElementById('sortOption').value;
 
-            // 1. Aplica todos os filtros selecionados
             dataFiltered = dataCombined.filter(item => {
                 const matchSearch = 
                     item['Ativo']?.toLowerCase().includes(searchText) || 
@@ -519,7 +553,6 @@
                 return matchSearch && matchAno && matchTipo && matchComprador && matchVendedor && matchEstrutura;
             });
 
-            // 2. Aplica a ORDENAÇÃO GLOBAL baseada na escolha do usuário
             dataFiltered.sort((a, b) => {
                 if (sortOption === 'dataDesc') return b._numeric.dateTs - a._numeric.dateTs;
                 if (sortOption === 'dataAsc') return a._numeric.dateTs - b._numeric.dateTs;
@@ -543,12 +576,25 @@
         }
 
         function updateKPIs() {
+            // Para o KPI de Volume Total não somar o mesmo portfólio várias vezes, precisamos pegar valores únicos baseados no bloco da transação
+            const transacoesUnicasMap = new Map();
+            dataFiltered.forEach(item => {
+                if (item._numeric.valor !== null) {
+                    // Cria uma chave única para a transação: Data + Comprador + Valor
+                    const chave = `${item.Data}_${item.Comprador}_${item._numeric.valor}`;
+                    if (!transacoesUnicasMap.has(chave)) {
+                        transacoesUnicasMap.set(chave, item._numeric.valor);
+                    }
+                }
+            });
+            
+            let totalVolume = 0;
+            transacoesUnicasMap.forEach(valor => totalVolume += valor);
+            
             const validCapRates = dataFiltered.map(i => i._numeric.capRate).filter(i => i !== null);
-            const validValues = dataFiltered.map(i => i._numeric.valor).filter(i => i !== null);
-            const validABLs = dataFiltered.map(i => i._numeric.abl).filter(i => i !== null);
             const validValorM2 = dataFiltered.map(i => i._numeric.valorM2).filter(i => i !== null);
+            const validABLs = dataFiltered.map(i => i._numeric.abl).filter(i => i !== null);
 
-            const totalVolume = validValues.reduce((sum, v) => sum + v, 0);
             const capMedio = validCapRates.length > 0 ? (validCapRates.reduce((sum, v) => sum + v, 0) / validCapRates.length) : 0;
             const avgValorM2 = validValorM2.length > 0 ? (validValorM2.reduce((sum, v) => sum + v, 0) / validValorM2.length) : 0;
             const totalABL = validABLs.reduce((sum, v) => sum + v, 0);
@@ -557,7 +603,7 @@
 
             document.getElementById('kpi-ativos').textContent = dataFiltered.length;
             document.getElementById('kpi-volume').textContent = formatCurrency(totalVolume, 2, volumeUnit);
-            document.getElementById('kpi-volume-sub').textContent = `${validValues.length} com valor`;
+            document.getElementById('kpi-volume-sub').textContent = `${transacoesUnicasMap.size} negociações`; // Mudança sutil para refletir pacotes
             document.getElementById('kpi-cap').textContent = `${capMedio.toFixed(1).replace('.', ',')}%`;
             document.getElementById('kpi-cap-sub').textContent = `${validCapRates.length} ativos`;
             document.getElementById('kpi-valorm2').textContent = `R$ ${avgValorM2.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
@@ -607,7 +653,6 @@
         }
 
         function renderCharts() {
-            // Agora os gráficos respeitam a ordem definida no seletor global, limitando aos 10 ou 15 primeiros daquela ordem
             const capRateData = dataFiltered.filter(i => i._numeric.capRate !== null).slice(0, 15);
             updateBarChart(
                 'chartCapRate', 
@@ -615,14 +660,32 @@
                 capRateData.map(i => i._numeric.capRate), 
                 getComputedStyle(document.documentElement).getPropertyValue('--primary-blue'), 
                 '%', 
-                false // False mantém a ordem do select global
+                false 
             );
 
-            const valorTransacaoData = dataFiltered.filter(i => i._numeric.valor !== null).slice(0, 10);
+            // Para o gráfico de valores, agrupar ativos do mesmo portfólio para não repetir a mesma barra gigante 5 vezes
+            const transacoesVisiveis = [];
+            const chavesVistas = new Set();
+            
+            dataFiltered.forEach(i => {
+                if (i._numeric.valor !== null) {
+                    const chave = `${i.Data}_${i.Comprador}_${i._numeric.valor}`;
+                    if (!chavesVistas.has(chave)) {
+                        chavesVistas.add(chave);
+                        transacoesVisiveis.push({
+                            label: `Portfólio ${i.Comprador} (${i.Data})`,
+                            valor: i._numeric.valor
+                        });
+                    }
+                }
+            });
+
+            const topTransacoes = transacoesVisiveis.slice(0, 10);
+
             updateBarChart(
                 'chartValorTransacao', 
-                valorTransacaoData.map(i => `${i.Ativo} (${i.Data})`), 
-                valorTransacaoData.map(i => i._numeric.valor), 
+                topTransacoes.map(i => i.label), 
+                topTransacoes.map(i => i.valor), 
                 getComputedStyle(document.documentElement).getPropertyValue('--secondary-green'), 
                 'R$ milhões', 
                 false
@@ -653,7 +716,6 @@
                 }
             });
 
-            // Gráfico de Compradores: Ordenado pelo maior pagador médio (Ranking Real)
             const valorM2ByComprador = {};
             dataFiltered.filter(i => i._numeric.valorM2 !== null && i['Comprador'] && i['Comprador'] !== '-').forEach(item => {
                 const comp = item['Comprador'];
@@ -669,7 +731,7 @@
                     media: valorM2ByComprador[comp].total / valorM2ByComprador[comp].count
                 };
             })
-            .sort((a, b) => b.media - a.media) // O gráfico de comprador é sempre um ranking de "Quem paga mais caro por m²"
+            .sort((a, b) => b.media - a.media) 
             .slice(0, 10);
 
             updateBarChart(
@@ -696,11 +758,11 @@
             html += `</tr></thead><tbody>`;
 
             let i = 0;
-            // Mesmo com a ordenação global ativada, esse algoritmo garante que transações vendidas no mesmo "pacote" (Portfólio) continuem com a célula visualmente mesclada, já que elas caem lado a lado na ordenação por terem a mesma data e valor.
             while (i < dataFiltered.length) {
                 let row = dataFiltered[i];
                 let rowspan = 1;
 
+                // Como a ordenação pode mexer na posição, ele checa os próximos itens pra ver se pertencem ao mesmo pacote que caiu junto
                 for (let j = i + 1; j < dataFiltered.length; j++) {
                     let isSamePortfolio = true;
                     if (dataFiltered[j]['Data'] !== row['Data'] || 
