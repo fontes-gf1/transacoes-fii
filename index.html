@@ -272,7 +272,8 @@
                     <div class="kpi-subtitle">por m²</div>
                 </div>
                 <div class="kpi-card">
-                    <div class="kpi-title">ABL total</div>
+                    <!-- Título ajustado para refletir a ABL transacionada -->
+                    <div class="kpi-title">ABL transacionada</div>
                     <div class="kpi-value" id="kpi-abl">0 mil</div>
                     <div class="kpi-subtitle">m²</div>
                 </div>
@@ -387,7 +388,6 @@
                     parsedLog.forEach(r => { r['Tipo'] = 'Galpão Logístico'; rawData.push(r); });
                 }
 
-                // Dicionário para traduzir o mês em texto para número e criar a linha do tempo
                 const monthMap = { 'jan': 0, 'fev': 1, 'mar': 2, 'abr': 3, 'mai': 4, 'jun': 5, 'jul': 6, 'ago': 7, 'set': 8, 'out': 9, 'nov': 10, 'dez': 11 };
 
                 dataCombined = rawData.map(row => {
@@ -400,7 +400,6 @@
                         return isNaN(num) ? null : num;
                     };
 
-                    // Função para ler a coluna Data (ex: "mai/19") e gerar um timestamp numérico para ordenação
                     const parseDate = (val) => {
                         if (!val || val.trim() === '-') return 0;
                         const parts = val.toString().toLowerCase().trim().split(/[\/\-]/);
@@ -428,9 +427,10 @@
                     cleanedData._numeric = {
                         capRate: parseNumber(row['Cap rate']),
                         valor: valorMilhoes,
-                        abl: parseNumber(row['ABL Total']?.replace(' mil', '').replace(' m2', '')),
+                        // Correção: Agora lê a 'ABL Transação' em vez da 'ABL Total'
+                        abl: parseNumber(row['ABL Transação']?.toString().replace(' mil', '').replace(' m2', '')),
                         valorM2: parseNumber(m2Raw),
-                        dateTs: parseDate(row['Data']) // Armazena a data real em formato matemático
+                        dateTs: parseDate(row['Data']) 
                     };
                     return cleanedData;
                 });
@@ -520,12 +520,21 @@
             document.getElementById('kpi-cap').textContent = `${capMedio.toFixed(1).replace('.', ',')}%`;
             document.getElementById('kpi-cap-sub').textContent = `${validCapRates.length} ativos`;
             document.getElementById('kpi-valorm2').textContent = `R$ ${avgValorM2.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-            document.getElementById('kpi-abl').textContent = `${totalABL.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} mil`;
+            
+            // Correção: Lógica de formatação inteligente para a ABL
+            let ablFormatted = '';
+            if (totalABL >= 1000000) {
+                ablFormatted = `${(totalABL / 1000000).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} mi`;
+            } else if (totalABL >= 1000) {
+                ablFormatted = `${(totalABL / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} mil`;
+            } else {
+                ablFormatted = totalABL.toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+            }
+            document.getElementById('kpi-abl').textContent = ablFormatted;
         }
 
         function updateBarChart(id, labels, data, color, yAxisLabel, isSorted = true) {
             let chartData = labels.map((label, index) => ({ label, value: data[index] }));
-            // Se isSorted for true, ordena por valor. Se for false, mantém a ordem cronológica do array.
             if (isSorted) chartData.sort((a, b) => b.value - a.value); 
 
             const finalLabels = chartData.map(d => d.label);
@@ -558,21 +567,18 @@
         }
 
         function renderCharts() {
-            // Ordena toda a base da mais recente para a mais antiga (Descending)
             const recentData = [...dataFiltered].sort((a, b) => b._numeric.dateTs - a._numeric.dateTs);
 
-            // 1. Cap rate (Top 15 mais recentes)
             const capRateData = recentData.filter(i => i._numeric.capRate !== null).slice(0, 15);
             updateBarChart(
                 'chartCapRate', 
-                capRateData.map(i => `${i.Ativo} (${i.Data})`), // Adiciona a data no rótulo
+                capRateData.map(i => `${i.Ativo} (${i.Data})`), 
                 capRateData.map(i => i._numeric.capRate), 
                 getComputedStyle(document.documentElement).getPropertyValue('--primary-blue'), 
                 '%', 
-                false // false para não quebrar a ordem cronológica
+                false 
             );
 
-            // 2. Valor de Transação (Top 10 mais recentes)
             const valorTransacaoData = recentData.filter(i => i._numeric.valor !== null).slice(0, 10);
             updateBarChart(
                 'chartValorTransacao', 
@@ -583,7 +589,6 @@
                 false
             );
 
-            // 3. Distribuição por estrutura (Mantém englobando toda a tela filtrada)
             const estruturaCounts = {};
             dataFiltered.forEach(item => { if (item.Estrutura) estruturaCounts[item.Estrutura] = (estruturaCounts[item.Estrutura] || 0) + 1; });
             const estruturaLabels = Object.keys(estruturaCounts).map(key => `${key} (${estruturaCounts[key]})`);
@@ -609,7 +614,6 @@
                 }
             });
 
-            // 4. Valor/m² médio por comprador (Mostra os 10 fundos com as movimentações mais recentes)
             const valorM2ByComprador = {};
             dataFiltered.filter(i => i._numeric.valorM2 !== null && i['Comprador'] && i['Comprador'] !== '-').forEach(item => {
                 const comp = item['Comprador'];
@@ -618,7 +622,6 @@
                 valorM2ByComprador[comp].total += item._numeric.valorM2;
                 valorM2ByComprador[comp].count++;
                 
-                // Grava a data da transação mais recente feita por esse fundo
                 if (item._numeric.dateTs > valorM2ByComprador[comp].lastDate) {
                     valorM2ByComprador[comp].lastDate = item._numeric.dateTs;
                 }
@@ -631,7 +634,7 @@
                     lastDate: valorM2ByComprador[comp].lastDate
                 };
             })
-            .sort((a, b) => b.lastDate - a.lastDate) // Ordena pelo comprador que atuou por último
+            .sort((a, b) => b.lastDate - a.lastDate) 
             .slice(0, 10);
 
             updateBarChart(
@@ -651,14 +654,14 @@
                 return;
             }
 
-            const headers = ['Ativo', 'Tipo', 'Local', 'Data', '%', 'ABL Total', 'Valor Transação', 'Valor/m²', 'Cap Rate'];
+            // Correção: Mudei o cabeçalho de 'ABL Total' para 'ABL Transação' para casar com o KPI
+            const headers = ['Ativo', 'Tipo', 'Local', 'Data', '%', 'ABL Transação', 'Valor Transação', 'Valor/m²', 'Cap Rate'];
 
             let html = `<table><thead><tr>`;
             headers.forEach(h => html += `<th>${h}</th>`);
             html += `</tr></thead><tbody>`;
 
             let i = 0;
-            // A tabela continua mostrando os dados na ordem original para preservar o agrupamento de portfólios
             while (i < dataFiltered.length) {
                 let row = dataFiltered[i];
                 let rowspan = 1;
@@ -676,7 +679,7 @@
                 const mergedColsMapping = {
                     'Data': 'Data', 
                     '%': '%', 
-                    'ABL Total': 'ABL Total', 
+                    'ABL Transação': 'ABL Transação', // Mapeado para a coluna correta
                     'Valor Transação': 'Valor Transação (R$)', 
                     'Cap Rate': 'Cap rate'
                 };
